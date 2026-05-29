@@ -3,6 +3,9 @@ FastAPI Backend for Multi-Agent Research Assistant
 Provides REST API endpoints for the Streamlit frontend
 """
 import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["HF_OFFLINE"] = "1"
+
 import asyncio
 from typing import Optional
 from dotenv import load_dotenv

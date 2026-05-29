@@ -3,6 +3,9 @@ Multi-Agent Research Assistant — Ultra-Premium Streamlit UI v2.0
 Supports both Cloud (Gemini API) and Local (Ollama) modes.
 """
 import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["HF_OFFLINE"] = "1"
+
 import sys
 import time
 import streamlit as st
@@ -1346,7 +1349,8 @@ with st.sidebar:
     try:
         stats = get_collection_stats()
         kb_chunks = stats.get("total_chunks", 0)
-    except:
+    except Exception as e:
+        st.sidebar.error(f"❌ KB Stats Error: {str(e)}")
         kb_chunks = 0
 
     st.markdown(f"""
