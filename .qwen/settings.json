@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/abhishekashokpattanashetti/.antigravity/extensions/qwenlm.qwen-code-vscode-ide-companion-0.14.4-darwin-arm64/dist/qwen-cli/bundled/qc-helper/docs/configuration/**)"
+    ]
+  },
+  "$version": 3
+}

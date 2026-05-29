@@ -1,0 +1,38 @@
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# ─── Virtual Environment ───
+.venv/
+venv/
+env/
+
+# ─── Secrets (NEVER commit API keys) ───
+.env
+.env.local
+.env.production
+
+# ─── ChromaDB local data ───
+rag/chroma_db/
+
+# ─── Logs ───
+*.log
+backend.log
+frontend.log
+
+# ─── OS files ───
+.DS_Store
+Thumbs.db
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Scratch / temp ───
+scratch/
