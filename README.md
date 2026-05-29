@@ -15,14 +15,14 @@ graph TD
     User([User Query]) --> UI[Streamlit UI / FastAPI]
     UI --> Router{Dynamic Mode Selector}
     
-    subgraph Cloud Mode (☁️ Cloud)
+    subgraph "Cloud Mode (☁️ Cloud)"
         Router -->|Cloud Mode| Gemini[Gemini 2.5 Flash]
         Gemini --> Tavily[Tavily Advanced Search]
         Tavily --> GeminiEmbed[Gemini Embeddings]
         GeminiEmbed --> ChromaCloud[(ChromaDB: cloud collection)]
     end
 
-    subgraph Local Mode (🔒 100% Offline)
+    subgraph "Local Mode (🔒 100% Offline)"
         Router -->|Local Mode| Ollama[Ollama: llama3.2]
         Ollama --> DDG[DuckDuckGo Search]
         DDG --> LocalEmbed[sentence-transformers / MiniLM]
