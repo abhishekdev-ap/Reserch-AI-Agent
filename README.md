@@ -1,6 +1,6 @@
 # 🔬 Multi-Agent Research Assistant & RAG Engine
 
-A production-grade, autonomous research system powered by **LangGraph**, **FastAPI**, and **Streamlit**. It orchestrates specialized AI agents to search, analyze, critique, and synthesize comprehensive, citation-aware research reports.
+A production-grade, autonomous research system powered by **LangGraph**, **FastAPI**, and **Streamlit**. It orchestrates specialized AI agents to search, analyze, critique, and compile comprehensive, citation-aware research reports.
 
 The system features a **Dual-Mode Execution Engine**—allowing you to run **100% locally & offline** (using Ollama, DuckDuckGo, and local embeddings) or in the **Cloud** (using Google Gemini and Tavily Search).
 
@@ -35,13 +35,43 @@ graph TD
 
 ---
 
+## 🧠 Core Architectural Breakdown
+
+The system is built on **LangGraph**, which structures the agent interaction as a stateful, cyclic state machine rather than a simple sequential pipeline.
+
+### 1. The Multi-Agent Workflow
+* **🔍 Search & Research Agent**: Takes the user's initial query, plans a search strategy, and dynamically executes parallel search queries. It retrieves raw search results and summarizes them, extracting factual contents and source URLs.
+* **🧠 Critique & Analysis Agent**: Acts as an active peer reviewer and fact-checker. It critically evaluates the gathered information, flags unverified or biased claims, identifies logical contradictions, and specifies gaps that require further search iterations.
+* **📝 Synthesis & Report Agent**: Compiles all verified research summaries, resolves conflicting views, and synthesizes a beautifully formatted Markdown report complete with inline number citations (e.g., `[1]`).
+* **🔄 Cyclic Feedback Loop**: The Critique Agent can trigger the Search Agent to run additional targeted searches up to your chosen `Research Depth` to fill missing information before finalizing the report.
+
+### 2. The Semantic RAG Engine
+* **Dynamic Chunking**: The generated report is automatically chunked into overlapping passages (1000 characters with 200 character overlap) and ingested into your local **ChromaDB**.
+* **Citation-Aware Q&A**: When asking follow-up questions, the system performs a semantic similarity search in ChromaDB, retrieves the most relevant document chunks, and compiles a comprehensive answer citing exact source materials.
+
+---
+
+## 🔌 Dynamic Proxy & Database Isolation
+
+A crucial engineering highlight of this project is its robust runtime flexibility and database integrity:
+
+### 1. Dynamic LLM & Embeddings Proxies
+Rather than importing static model configurations at startup (which would require restarting the server to switch models), the code utilizes lazy-loaded dynamic proxies (`DynamicLLMProxy` and `DynamicEmbeddingsProxy`). These classes intercept standard model calls (`invoke`, `embed_documents`, `embed_query`) and resolve them *on-the-fly* using the currently active environment mode selected in the UI.
+
+### 2. Isolated Vector Storage
+Local embeddings (`all-MiniLM-L6-v2`) output vectors with **384 dimensions**, whereas Google Gemini embeddings output **768 dimensions**. Storing both inside the same vector database collection would cause instant coordinate crashes. 
+The database manager dynamically isolates storage into separate physical folders:
+* **Local Collection**: `chroma_db/local`
+* **Cloud Collection**: `chroma_db/cloud`
+
+---
+
 ## ✨ Features
 
-* **Multi-Agent Orchestration**: Built on **LangGraph** to model agents (Search, Critique, Synthesis) as a stateful, cyclic graph with automated fallback tools.
-* **Semantic RAG Q&A**: Ingests synthesized reports or custom texts into a local **ChromaDB** vector store to answer follow-up questions with precise citations.
-* **Database Isolation**: Dynamically routes local and cloud vector embeddings into separate databases to prevent dimension conflicts and database crashes.
-* **Figma-Inspired UI/UX**: Ultra-premium glassmorphic interface featuring a breathing neon background, custom sliding segmented controllers, and interactive chat bubble dialogue threads.
-* **100% Privacy-Preserved Local Execution**: Runs fully offline with zero data leaving your machine, bypassing all public APIs and internet connections.
+* **Multi-Agent Orchestration**: Stateful, cyclic graph modeling built on **LangGraph** with automated fallback search tools.
+* **Segmented Q&A Conversations**: Beautiful, high-fidelity chat dialogue threads (with custom avatar glows and animation states) for follow-up Q&A.
+* **Premium Figma-Inspired UI/UX**: Ultra-premium Streamlit canvas featuring a breathing neon background, custom sliding segmented controllers, and clean, collapsible references.
+* **100% Privacy-Preserved Local Mode**: Bypasses all public APIs and internet connections for full offline data safety.
 
 ---
 
