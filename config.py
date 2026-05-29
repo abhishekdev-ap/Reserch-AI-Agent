@@ -104,30 +104,96 @@ def get_embeddings():
 def do_web_search(query: str, max_results: int = 7) -> list:
     """
     Perform a web search. Uses Tavily in cloud mode, DuckDuckGo in local mode.
-    Returns a list of dicts with keys: url, title, content.
+    If offline, API fails, or returns zero results, gracefully falls back to local vector database search.
     """
     if is_local_active():
-        from duckduckgo_search import DDGS
-        results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
+        try:
+            from duckduckgo_search import DDGS
+            results = []
+            with DDGS() as ddgs:
+                for r in ddgs.text(query, max_results=max_results):
+                    results.append({
+                        "url": r.get("href", "N/A"),
+                        "title": r.get("title", "N/A"),
+                        "content": r.get("body", "N/A"),
+                        "published_date": "N/A",
+                    })
+            if results:
+                return results
+            print("⚠️ DuckDuckGo search returned 0 results. Falling back to local knowledge base...")
+        except Exception as e:
+            print(f"⚠️ DuckDuckGo web search failed (offline): {e}. Falling back to local knowledge base...")
+        
+        # Local vector database fallback block
+        try:
+            from rag.rag_engine import get_vectorstore
+            vs = get_vectorstore()
+            docs = vs.similarity_search(query, k=max_results)
+            results = []
+            for doc in docs:
                 results.append({
-                    "url": r.get("href", "N/A"),
-                    "title": r.get("title", "N/A"),
-                    "content": r.get("body", "N/A"),
+                    "url": doc.metadata.get("source", "local_kb"),
+                    "title": doc.metadata.get("title", "Local KB"),
+                    "content": doc.page_content,
                     "published_date": "N/A",
+                    "score": 1.0
                 })
-        return results
+            if results:
+                print(f"✅ Offline Mode: Retrieved {len(results)} chunks from local vector store.")
+                return results
+        except Exception as le:
+            print(f"❌ Local vector database retrieval failed: {le}")
+        
+        # Final fallback notice chunk
+        return [{
+            "url": "offline_kb_fallback",
+            "title": "Offline Status",
+            "content": f"The system is offline and no matching data was found in the local knowledge base for the search query: '{query}'. Please upload relevant documents in the knowledge base.",
+            "published_date": "N/A"
+        }]
     else:
-        from tavily import TavilyClient
-        tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
-        response = tavily_client.search(
-            query=query,
-            max_results=max_results,
-            search_depth="advanced",
-            include_raw_content=False,
-        )
-        return response.get("results", [])
+        try:
+            from tavily import TavilyClient
+            tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+            response = tavily_client.search(
+                query=query,
+                max_results=max_results,
+                search_depth="advanced",
+                include_raw_content=False,
+            )
+            results = response.get("results", [])
+            if results:
+                return results
+            print("⚠️ Tavily search returned 0 results. Falling back to local knowledge base...")
+        except Exception as e:
+            print(f"⚠️ Cloud Tavily search failed: {e}. Falling back to local knowledge base...")
+        
+        # Local vector database fallback block
+        try:
+            from rag.rag_engine import get_vectorstore
+            vs = get_vectorstore()
+            docs = vs.similarity_search(query, k=max_results)
+            results = []
+            for doc in docs:
+                results.append({
+                    "url": doc.metadata.get("source", "local_kb"),
+                    "title": doc.metadata.get("title", "Local KB"),
+                    "content": doc.page_content,
+                    "published_date": "N/A",
+                    "score": 1.0
+                })
+            if results:
+                print(f"✅ Cloud Fallback: Retrieved {len(results)} chunks from local vector store.")
+                return results
+        except Exception as le:
+            print(f"❌ Local vector database retrieval failed: {le}")
+        
+        return [{
+            "url": "offline_kb_fallback",
+            "title": "Offline / API Error Status",
+            "content": f"API search request failed and no matching data was found in the local knowledge base for: '{query}'. Please check your internet connection or Tavily API key.",
+            "published_date": "N/A"
+        }]
 
 
 # ─── Mode Info (for UI) ──────────────────────────────────────────────────────
