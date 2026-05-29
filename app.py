@@ -619,6 +619,34 @@ section[data-testid="stSidebar"] > div:first-child {
     color: #c4b5fd;
 }
 
+/* Typography & visibility styles for research reports inside expanders */
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] h1,
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] h2,
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] h3,
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] h4 {
+    font-family: 'Space Grotesk', sans-serif !important;
+    color: var(--text-primary) !important;
+    margin-top: 1.5rem !important;
+    margin-bottom: 0.8rem !important;
+}
+
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] li,
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] span {
+    color: var(--text-secondary) !important;
+    line-height: 1.85 !important;
+    font-size: 0.95rem !important;
+}
+
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] strong {
+    color: #c4b5fd !important;
+}
+
+.light-mode [data-testid="stExpander"] [data-testid="stMarkdownContainer"] strong {
+    color: #4f46e5 !important;
+}
+
+
 /* ═══ CITATION CARD ═══ */
 .cite-card {
     background: rgba(10, 10, 25, 0.8);
@@ -1568,8 +1596,6 @@ with tab1:
                 """, unsafe_allow_html=True)
 
                 if item["report"]:
-                    st.markdown(f'<div class="report-wrap">{item["report"]}</div>', unsafe_allow_html=True)
-                    st.markdown("")
                     st.markdown(item["report"])
                 else:
                     st.info("No report content was generated. Try a more specific query.")
