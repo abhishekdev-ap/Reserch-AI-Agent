@@ -20,6 +20,12 @@ def set_mode(mode: str):
     LLM_MODE = _mode_override
     IS_LOCAL = _mode_override == "local"
     os.environ["LLM_MODE"] = _mode_override
+    if IS_LOCAL:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["HF_OFFLINE"] = "1"
+    else:
+        os.environ.pop("HF_HUB_OFFLINE", None)
+        os.environ.pop("HF_OFFLINE", None)
 
 def get_current_mode() -> str:
     """Get the currently active mode string."""
@@ -35,43 +41,62 @@ def is_local_active() -> bool:
 LLM_MODE = get_current_mode()
 IS_LOCAL = is_local_active()
 
+if IS_LOCAL:
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["HF_OFFLINE"] = "1"
+
+# ─── Cache Containers ────────────────────────────────────────────────────────
+_llm_cache = {}
+_embeddings_cache = {}
+
 # ─── LLM Provider ────────────────────────────────────────────────────────────
 
 def get_llm(temperature: float = 0.1):
-    """Return the appropriate LLM based on dynamic LLM_MODE."""
-    if is_local_active():
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=os.getenv("OLLAMA_MODEL", "llama3.2"),
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            temperature=temperature,
-        )
-    else:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(
-            model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
-            google_api_key=os.getenv("GEMINI_API_KEY"),
-            temperature=temperature,
-        )
+    """Return the appropriate LLM based on dynamic LLM_MODE with caching."""
+    global _llm_cache
+    mode = get_current_mode()
+    cache_key = (mode, temperature)
+    if cache_key not in _llm_cache:
+        if mode == "local":
+            from langchain_ollama import ChatOllama
+            _llm_cache[cache_key] = ChatOllama(
+                model=os.getenv("OLLAMA_MODEL", "llama3.2"),
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                temperature=temperature,
+            )
+        else:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            _llm_cache[cache_key] = ChatGoogleGenerativeAI(
+                model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+                google_api_key=os.getenv("GEMINI_API_KEY"),
+                temperature=temperature,
+            )
+    return _llm_cache[cache_key]
 
 
 # ─── Embeddings Provider ─────────────────────────────────────────────────────
 
 def get_embeddings():
-    """Return the appropriate embeddings model based on dynamic LLM_MODE."""
-    if is_local_active():
-        from langchain_community.embeddings import HuggingFaceEmbeddings
-        return HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
-    else:
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings
-        return GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            google_api_key=os.getenv("GEMINI_API_KEY"),
-        )
+    """Return the appropriate embeddings model based on dynamic LLM_MODE with caching."""
+    global _embeddings_cache
+    mode = get_current_mode()
+    if mode not in _embeddings_cache:
+        if mode == "local":
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["HF_OFFLINE"] = "1"
+            from langchain_community.embeddings import HuggingFaceEmbeddings
+            _embeddings_cache[mode] = HuggingFaceEmbeddings(
+                model_name="all-MiniLM-L6-v2",
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+        else:
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+            _embeddings_cache[mode] = GoogleGenerativeAIEmbeddings(
+                model="models/gemini-embedding-001",
+                google_api_key=os.getenv("GEMINI_API_KEY"),
+            )
+    return _embeddings_cache[mode]
 
 
 # ─── Search Provider ─────────────────────────────────────────────────────────
