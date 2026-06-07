@@ -78,7 +78,7 @@ button[title="Expand sidebar"]   { display: none !important; }
     --radius-xl: 32px;
 }
 
-* { font-family: 'Plus Jakarta Sans', sans-serif !important; }
+html, body, [data-testid="stAppViewContainer"], .stApp, p, h1, h2, h3, h4, h5, h6, button, input, select, textarea, li { font-family: 'Plus Jakarta Sans', sans-serif !important; }
 code, pre, .stCode { font-family: 'JetBrains Mono', monospace !important; }
 
 /* ═══ ANIMATED BACKGROUND & GLOWING NEON ORBS ═══ */
@@ -1297,6 +1297,52 @@ h1, h2, h3, h4, h5, h6,
     background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
     color: #ffffff !important;
 }
+
+/* ═══ EMPTY STATE CARDS ═══ */
+.empty-state-card {
+    background: rgba(13, 16, 32, 0.4) !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    border-radius: 20px !important;
+    padding: 3.5rem 2rem !important;
+    text-align: center !important;
+    margin-bottom: 2rem !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+}
+.light-mode .empty-state-card {
+    background: rgba(255, 255, 255, 0.75) !important;
+    border: 1px solid rgba(99, 102, 241, 0.15) !important;
+    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.04) !important;
+}
+
+/* ═══ DOCUMENT CARDS ═══ */
+.document-card {
+    background: rgba(13, 16, 32, 0.45) !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    border-radius: 12px !important;
+    padding: 10px 14px !important;
+    margin-bottom: 8px !important;
+}
+.light-mode .document-card {
+    background: rgba(255, 255, 255, 0.7) !important;
+    border: 1px solid rgba(99, 102, 241, 0.12) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+}
+
+/* ═══ NO DOCUMENTS CARD ═══ */
+.no-docs-card {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border: 1px dashed rgba(255, 255, 255, 0.06) !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    text-align: center !important;
+    color: var(--text-muted) !important;
+    font-size: 0.82rem !important;
+}
+.light-mode .no-docs-card {
+    background: rgba(0, 0, 0, 0.01) !important;
+    border: 1px dashed rgba(99, 102, 241, 0.2) !important;
+    color: var(--text-muted) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1596,15 +1642,7 @@ if is_local_active():
             
         if not indexed_docs:
             st.markdown("""
-            <div style="
-                background: rgba(255,255,255,0.02);
-                border: 1px dashed rgba(255,255,255,0.06);
-                border-radius: 12px;
-                padding: 20px;
-                text-align: center;
-                color: var(--text-muted);
-                font-size: 0.82rem;
-            ">
+            <div class="no-docs-card">
                 No local documents uploaded yet.<br/>Drag & drop PDFs above to start!
             </div>
             """, unsafe_allow_html=True)
@@ -1614,13 +1652,7 @@ if is_local_active():
                 card_cols = st.columns([5, 1])
                 with card_cols[0]:
                     st.markdown(f"""
-                    <div style="
-                        background: rgba(13, 16, 32, 0.45);
-                        border: 1px solid rgba(255,255,255,0.04);
-                        border-radius: 12px;
-                        padding: 10px 14px;
-                        margin-bottom: 8px;
-                    ">
+                    <div class="document-card">
                         <div style="font-size: 0.84rem; font-weight: 600; color: var(--text-primary); word-break: break-all;">
                             📄 {doc['name']}
                         </div>
@@ -1673,16 +1705,9 @@ if is_local_active():
         # Check if there are documents
         if not indexed_docs:
             st.markdown("""
-            <div style="
-                background: rgba(13,16,32,0.4);
-                border: 1px solid rgba(255,255,255,0.04);
-                border-radius: 20px;
-                padding: 4rem 2rem;
-                text-align: center;
-                margin-bottom: 2rem;
-            ">
+            <div class="empty-state-card" style="padding: 4rem 2rem !important;">
                 <div style="font-size: 3.5rem; margin-bottom: 1rem;">📭</div>
-                <h4 style="font-family: 'Space Grotesk', sans-serif !important; font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
+                <h4 style="font-family: 'Space Grotesk', sans-serif !important; font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.4rem; margin-top: 0px !important;">
                     Waiting for Documents
                 </h4>
                 <div style="font-size: 0.85rem; color: var(--text-secondary); max-width: 400px; margin: 0 auto; line-height: 1.5;">
@@ -1778,14 +1803,7 @@ if is_local_active():
                     st.markdown('<div style="height: 12px;"></div>', unsafe_allow_html=True)
             else:
                 st.markdown("""
-                <div style="
-                    background: rgba(13,16,32,0.3);
-                    border: 1px solid rgba(255,255,255,0.03);
-                    border-radius: 16px;
-                    padding: 3rem 2rem;
-                    text-align: center;
-                    margin-top: 1.5rem;
-                ">
+                <div class="empty-state-card" style="padding: 3rem 2rem !important; margin-top: 1.5rem !important;">
                     <span style="font-size: 2.2rem; display: block; margin-bottom: 0.5rem; opacity: 0.7;">💬</span>
                     <div style="font-size: 0.94rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Console Ready</div>
                     <div style="font-size: 0.8rem; color: var(--text-secondary);">Ask a question about the uploaded PDFs above and witness citation-backed local synthesis.</div>
