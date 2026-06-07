@@ -1238,6 +1238,61 @@ hr {
     background: var(--surface-hover);
     transform: translateY(-1px);
 }
+
+/* ═══ GLOBAL HEADING OVERRIDES ═══ */
+h1, h2, h3, h4, h5, h6,
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] h4 {
+    color: var(--text-primary) !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+    margin-top: 1rem !important;
+    margin-bottom: 0.8rem !important;
+    line-height: 1.3 !important;
+}
+
+/* ═══ FILE UPLOADER ADJUSTMENTS ═══ */
+[data-testid="stFileUploader"] {
+    background: rgba(13, 16, 32, 0.45) !important;
+    border: 1px dashed rgba(99, 102, 241, 0.25) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 16px !important;
+    margin-top: 10px !important;
+}
+/* Hide the duplicate widget label text to prevent overlap */
+[data-testid="stFileUploader"] label {
+    display: none !important;
+}
+[data-testid="stFileUploader"] section {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+[data-testid="stFileUploader"] button {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    border: none !important;
+    font-weight: 600 !important;
+    font-size: 0.82rem !important;
+    padding: 6px 14px !important;
+    box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2) !important;
+    transition: all 0.2s !important;
+}
+[data-testid="stFileUploader"] button:hover {
+    filter: brightness(1.1) !important;
+    transform: translateY(-1px) !important;
+}
+
+.light-mode [data-testid="stFileUploader"] {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+}
+.light-mode [data-testid="stFileUploader"] button {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
+    color: #ffffff !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1493,7 +1548,7 @@ if is_local_active():
     st.markdown('<div class="section-subtitle">Upload PDF documents, index them locally in ChromaDB, and query their content with precise citation-aware answers.</div>', unsafe_allow_html=True)
     
     # Layout columns
-    col_left, col_right = st.columns([1, 1.8], gap="large")
+    col_left, col_right = st.columns([1.25, 1.55], gap="large")
     
     with col_left:
         st.markdown("### 📄 Document Manager")
@@ -1604,8 +1659,7 @@ if is_local_active():
         ">
             🟢 <strong>Status:</strong> Offline Ready<br/>
             🗄️ <strong>Collection:</strong> {col_name}_local<br/>
-            🧩 <strong>Total chunks:</strong> {total_chunks}<br/>
-            📂 <strong>Storage Path:</strong> <code style="font-size: 0.68rem; color:#86efac; word-break:break-all;">{path_val}/local</code>
+            🧩 <strong>Total chunks:</strong> {total_chunks}
         </div>
         """, unsafe_allow_html=True)
         
@@ -1640,7 +1694,7 @@ if is_local_active():
                 label_visibility="collapsed"
             )
             
-            col_ask1, col_ask2, _ = st.columns([1, 1, 3])
+            col_ask1, col_ask2, _ = st.columns([1.8, 1.2, 3])
             with col_ask1:
                 ask_qa = st.button("💬 Ask Document", type="primary", use_container_width=True)
             with col_ask2:
@@ -1889,7 +1943,7 @@ else:
             label_visibility="collapsed",
         )
     
-        col_r1, col_r2, _ = st.columns([1, 1, 4])
+        col_r1, col_r2, _ = st.columns([1.8, 1.2, 3])
         with col_r1:
             ask_btn = st.button("💬 Ask Question", use_container_width=True, type="primary")
         with col_r2:

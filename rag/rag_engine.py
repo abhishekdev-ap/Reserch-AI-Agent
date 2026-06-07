@@ -76,8 +76,8 @@ def get_vectorstore() -> Chroma:
 # ─── Document Ingestion ────────────────────────────────────────────────────────
 
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200,
+    chunk_size=600,
+    chunk_overlap=120,
     length_function=len,
 )
 
@@ -268,8 +268,23 @@ def clear_collection() -> bool:
 
 # ─── PDF Ingestion & Document-Aware Local RAG ───────────────────────────────────
 
+import re
+
+def clean_extracted_text(text: str) -> str:
+    """Clean extracted PDF text to remove duplicate whitespace and preserve structure."""
+    if not text:
+        return ""
+    # Standardize spaces and tabs without breaking newlines
+    text = re.sub(r'[ \t]+', ' ', text)
+    # Replace multiple consecutive newlines (3 or more) with double newlines to maintain paragraphs
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # Strip trailing/leading spaces on each individual line
+    lines = [line.strip() for line in text.split('\n')]
+    cleaned = '\n'.join(lines)
+    return cleaned.strip()
+
 def ingest_pdf_bytes(pdf_bytes: bytes, filename: str) -> int:
-    """Parse and ingest a PDF directly from a bytes stream into ChromaDB."""
+    """Parse and ingest a PDF directly from a bytes stream into ChromaDB with structural text cleaning."""
     if not pdf_bytes:
         logger.warning("ingest_pdf_bytes called with empty bytes.")
         return 0
@@ -278,9 +293,10 @@ def ingest_pdf_bytes(pdf_bytes: bytes, filename: str) -> int:
         docs = []
         for i, page in enumerate(reader.pages):
             text = page.extract_text()
-            if text and text.strip():
+            cleaned_text = clean_extracted_text(text)
+            if cleaned_text:
                 docs.append(Document(
-                    page_content=text,
+                    page_content=cleaned_text,
                     metadata={
                         "source": filename,
                         "title": filename,
@@ -374,6 +390,13 @@ def document_qa_query(question: str, k: int = 5) -> dict:
         # Keep the top result to inspect
         filtered_docs = docs[:1]
         
+    # Sort filtered documents by source name and page number to preserve original structure/reading order
+    def get_sort_key(doc_score):
+        doc, _ = doc_score
+        return (doc.metadata.get("source", ""), doc.metadata.get("page", 0))
+    
+    filtered_docs = sorted(filtered_docs, key=get_sort_key)
+        
     # Build context and extract citations
     context_parts = []
     sources = []
@@ -404,7 +427,7 @@ STRICT INSTRUCTIONS:
 3. If the context does not contain sufficient or clear information to answer the question, state exactly and only:
 "The uploaded documents do not contain sufficient information to answer this question."
 4. Absolutely DO NOT use your pre-trained general knowledge, external facts, or assumptions.
-5. If the question is completely unrelated to the provided document context, reply exactly with the warning message above.
+5. Pay close attention to headings, lists, numbers, and tabular data presented in the text chunks. Chunks have been ordered logically by page numbers to preserve paragraph transitions, page changes, and relational context.
 6. Keep your tone neutral, professional, and entirely grounded in the text."""),
             HumanMessage(content=f"Context:\n{context}\n\nQuestion: {question}")
         ])
