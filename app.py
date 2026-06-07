@@ -966,7 +966,7 @@ hr {
     --border-hover: rgba(99, 102, 241, 0.45);
     --text-primary: #1e293b;
     --text-secondary: #475569;
-    --text-muted: #94a3b8;
+    --text-muted: #64748b;
     --glow: 0 4px 20px rgba(99, 102, 241, 0.1);
 }
 
@@ -1261,8 +1261,12 @@ h1, h2, h3, h4, h5, h6,
     margin-top: 10px !important;
 }
 /* Hide the duplicate widget label text to prevent overlap */
-[data-testid="stFileUploader"] label {
+[data-testid="stFileUploader"] label,
+[data-testid="stFileUploader"] [data-testid="stWidgetLabel"] {
     display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 [data-testid="stFileUploader"] section {
     padding: 0 !important;
@@ -1681,7 +1685,7 @@ if is_local_active():
                 <h4 style="font-family: 'Space Grotesk', sans-serif !important; font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
                     Waiting for Documents
                 </h4>
-                <div style="font-size: 0.85rem; color: var(--text-muted); max-width: 400px; margin: 0 auto; line-height: 1.5;">
+                <div style="font-size: 0.85rem; color: var(--text-secondary); max-width: 400px; margin: 0 auto; line-height: 1.5;">
                     Please upload and index at least one PDF document on the left panel before asking questions.
                 </div>
             </div>
@@ -1784,7 +1788,7 @@ if is_local_active():
                 ">
                     <span style="font-size: 2.2rem; display: block; margin-bottom: 0.5rem; opacity: 0.7;">💬</span>
                     <div style="font-size: 0.94rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Console Ready</div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">Ask a question about the uploaded PDFs above and witness citation-backed local synthesis.</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Ask a question about the uploaded PDFs above and witness citation-backed local synthesis.</div>
                 </div>
                 """, unsafe_allow_html=True)
 
