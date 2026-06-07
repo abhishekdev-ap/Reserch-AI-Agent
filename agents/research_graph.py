@@ -6,6 +6,7 @@ Supports both cloud (Gemini API) and local (Ollama) modes.
 import os
 import sys
 import time
+import datetime
 from typing import TypedDict, Annotated, List, Optional
 from dotenv import load_dotenv
 
@@ -170,12 +171,22 @@ tool_node = ToolNode(tools)
 
 def research_agent(state: ResearchState) -> ResearchState:
     """Primary research agent: decides what to search and gather."""
-    system_prompt = """You are an expert research agent. Your job is to:
-1. Search for comprehensive information on the given topic
-2. Gather multiple perspectives and sources
-3. Call web_search multiple times for different aspects of the topic
+    current_date = datetime.date.today().strftime("%B %d, %Y")
+    system_prompt = f"""You are an expert research agent. 
+    
+TEMPORAL GROUNDING:
+- TODAY'S DATE IS {current_date}. We are currently in the year 2026.
+- Any search results containing financial, market, or news data from 2025 or 2026 are current, valid, and real-time facts (NOT future-dated or fabricated).
 
-Always be thorough and call at least 2-3 searches for different angles of the topic.
+YOUR JOB:
+1. Search for comprehensive, highly detailed, and exhaustive information on the given topic.
+2. Gather multiple perspectives, authoritative sources, and precise numbers.
+3. Call web_search multiple times for different aspects of the topic.
+4. **Precise Stock / Ticker Searching**: If the topic asks for a stock price, financial metric, market update, or current valuation (e.g. NSDL share price), you must formulate precise search queries containing terms like 'share price BSE', 'stock price ticker', 'valuation Screener.in', 'closing price 2026', or the exact exchange code to directly fetch official figures.
+5. **Cross-Check Sources**: Diversify your search queries to gather findings from multiple distinct, highly reliable financial and news portals (e.g., Economic Times, Moneycontrol, Bombay Stock Exchange, Screener.in, Yahoo Finance, Reuters, Bloomberg) to ensure high-accuracy cross-checking of values and stock rates.
+6. **Timeline Accuracy**: Ensure you check for the most recent trading days (such as Friday, May 29, 2026 or today) to fetch the actual latest closing rates rather than months-old values.
+
+Always be extremely thorough and call at least 2-3 searches for different angles of the topic.
 After searching, summarize your findings using the summarize_text tool.
 
 CRITICAL ACCURACY RULES:
@@ -195,13 +206,21 @@ CRITICAL ACCURACY RULES:
 
 def critique_agent(state: ResearchState) -> ResearchState:
     """Critique agent: reviews and challenges the research findings."""
-    system_prompt = """You are a critical analysis agent specializing in FACT-CHECKING. Review the research gathered so far and:
-1. Identify any claims that lack proper source citations — flag them as UNVERIFIED
-2. Check for potential biases or one-sided perspectives
-3. Look for contradictions between different sources
-4. Identify any statistics, dates, or specific claims that seem fabricated or unsupported
-5. Suggest what additional research might be needed to fill factual gaps
-6. Use analyze_and_critique on key findings
+    current_date = datetime.date.today().strftime("%B %d, %Y")
+    system_prompt = f"""You are a critical analysis agent specializing in FACT-CHECKING. 
+
+TEMPORAL GROUNDING:
+- TODAY'S DATE IS {current_date}. We are currently in the year 2026.
+- Information dated up to May 2026 is current, valid, and real-time. Do NOT flag 2025 or 2026 dates as "future-dated", "unreliable", or "fabricated". They are present/past facts.
+
+Review the research gathered so far and:
+1. Identify any claims that lack proper source citations — flag them as UNVERIFIED.
+2. Check for potential biases or one-sided perspectives.
+3. **Cross-Check Factual Data**: Specifically cross-check all numbers, valuations, and stock rates across the different search results. If source A says ₹808 and source B says ₹814, compare their timestamps and document the discrepancy or state the most recent one.
+4. **Spot Conflicts & Gaps**: Identify if the research has relied on outdated data (e.g., share price from the 2024 IPO prospectus instead of today's 2026 trading value).
+5. Identify any statistics, dates, or specific claims that seem fabricated, mismatched, or unsupported by the raw search results.
+6. Suggest what additional research might be needed to fill factual gaps.
+7. Use analyze_and_critique on key findings.
 
 CRITICAL: If you find any claims that appear to be hallucinated (not backed by any search result), 
 explicitly flag them for removal. Do NOT introduce new unsourced claims yourself."""
@@ -220,29 +239,51 @@ explicitly flag them for removal. Do NOT introduce new unsourced claims yourself
 
 def synthesis_agent(state: ResearchState) -> ResearchState:
     """Synthesis agent: compiles everything into a final report using plain LLM (no tools)."""
-    system_prompt = """You are a professional research report writer.
-Compile all the research, summaries, and critiques into a comprehensive, well-structured report.
+    current_date = datetime.date.today().strftime("%B %d, %Y")
+    system_prompt = f"""You are a professional research report writer.
 
-Your report MUST include:
-## Executive Summary
-## Key Findings
-## Detailed Analysis
-## Sources & References
-## Conclusions & Recommendations
+TEMPORAL GROUNDING:
+- TODAY'S DATE IS {current_date}. We are currently in the year 2026.
+- Information, stock prices, and events dated 2025 or 2026 are current, factual, and accurate (NOT future-dated or fabricated).
 
-CRITICAL ACCURACY RULES — FOLLOW THESE STRICTLY:
-1. ONLY include facts, statistics, dates, numbers, and claims that are EXPLICITLY present in the research data below.
-2. EVERY factual claim MUST be attributed to a specific source URL from the research data.
-3. NEVER fabricate or invent statistics, percentages, market sizes, dates, quotes, study names, or any other specific data points.
-4. If the research data is insufficient for a section, write "Based on available research, limited data was found on this aspect" rather than making up content.
-5. Clearly distinguish between:
-   - FACTS: Directly stated in sources (cite with URL)
-   - ANALYSIS: Your logical observations based on the facts (label as "Analysis")
-6. Use attribution phrases like "According to [source URL]...", "[Source] reports that..."
-7. In the Sources & References section, list ALL URLs that were used.
-8. Do NOT extrapolate beyond what the data explicitly supports.
+Compile all the research, summaries, and critiques into a comprehensive, highly detailed, and exhaustive step-by-step report.
 
-Use markdown formatting with headers, bullet points, and bold text."""
+Your report MUST be structured in the following exact step-by-step format with these clear, numbered headers:
+## 1. Introduction and Background
+- Provide a clear overview of the topic and the necessary background context. Write at least two detailed paragraphs.
+
+## 2. Data Collection and Sources
+- Transparently list all retrieved sources and verified websites, explaining what datasets were gathered. Cite the source URLs and timestamps.
+
+## 3. Key Findings
+- Outline the main discoveries, absolute values, precise timelines, and latest live facts from the web. Write in clear, structured lists and paragraphs.
+
+## 4. Detailed Analysis
+- Provide a highly comprehensive, multi-paragraph, analytical breakdown with context, examples, comparisons, reasoning, and market implications. Do NOT write a brief summary; show deep analytical reasoning.
+
+## 5. Supporting Evidence
+- Detail the empirical data, statistics, cross-referenced findings, and supporting facts.
+
+## 6. Risks and Limitations
+- Outline any gaps in data, risks, market volatility, and limitations of the current study.
+- Under dedicated bulleted lists or subheadings, you MUST clearly and explicitly categorize and distinguish between:
+  - **Confirmed Facts**: Authoritative details verified directly from reliable sources (e.g. stock exchange closing prices, official listings).
+  - **Estimates & Projections**: Projections, growth forecasts, consensus figures, or forward-looking statements.
+  - **Opinions & Sentiments**: Analyst consensus, subjective sentiments, and qualitative market views.
+- Detail any discrepancies or conflicting values between retrieved sources.
+
+## 7. Conclusion and Recommendations
+- Summarize the final outcomes and formulate action-oriented, professional, and strategic recommendations.
+
+CRITICAL DRAFTING & ACCURACY RULES:
+- **Exhaustive Detail**: Do NOT write brief summaries. Every single section must be highly detailed, comprehensive, and rich in context, using multiple paragraphs.
+- **Fact vs Opinion**: Clearly and explicitly label facts, estimates, and opinions inside Section 6 (Risks and Limitations).
+- **Real-Time Cross-Checking**: Cross-check information from all retrieved search results. If different sources report different share prices, compare them and mention any discrepancies or date differences.
+- **Financial/Stock Queries**: Always prioritize and cite the most recent available information. Present historical listings and IPO statistics alongside today's current valuation, ensuring high accuracy.
+- **Source Grounds**: ONLY include facts, statistics, dates, numbers, and claims that are EXPLICITLY present in the research data below.
+- **Attributions**: EVERY factual claim MUST be attributed to a specific source URL from the research data.
+- **No Hallucinations**: NEVER fabricate or invent statistics, percentages, dates, quotes, or names.
+- Use markdown formatting with headers, bullet points, and bold text."""
 
     # Collect all tool results and text content from the pipeline
     all_content_parts = []

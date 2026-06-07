@@ -1,111 +1,93 @@
-# 🔬 Multi-Agent Research Assistant & RAG Engine
+# 🔬 Multi-Agent Research Assistant & Offline RAG Engine
 
 A production-grade, autonomous research system powered by **LangGraph**, **FastAPI**, and **Streamlit**. It orchestrates specialized AI agents to search, analyze, critique, and compile comprehensive, citation-aware research reports.
 
-The system features a **Dual-Mode Execution Engine**—allowing you to run **100% locally & offline** (using Ollama, DuckDuckGo, and local embeddings) or in the **Cloud** (using Google Gemini and Tavily Search).
+The system features a **Dual-Mode Execution Engine**—allowing you to run **Cloud Mode** (using Google Gemini, Tavily Search, and Google Embeddings) for advanced web-scale queries, or a dedicated, 100% offline **Document Q&A Mode** (using Ollama `llama3.2`, HuggingFace embeddings, and ChromaDB) for private document analysis.
 
 ---
 
 ## 🌐 Dynamic Dual-Mode Architecture
 
-The system is architected with a hot-swappable dynamic proxy system. You can switch between **Cloud Mode** and **Local Mode** instantly via the frontend UI without editing files or restarting any servers.
+The system features a hot-swappable proxy structure. You can switch between modes instantly via the UI without restarting servers or editing configurations:
 
 ```mermaid
 graph TD
     User([User Query]) --> UI[Streamlit UI / FastAPI]
-    UI --> Router{Dynamic Mode Selector}
+    UI --> Router{Mode Selector}
     
-    subgraph "Cloud Mode (☁️ Cloud)"
-        Router -->|Cloud Mode| Gemini[Gemini 2.5 Flash]
-        Gemini --> Tavily[Tavily Advanced Search]
-        Tavily --> GeminiEmbed[Gemini Embeddings]
+    subgraph "Cloud Research Mode (☁️ Cloud)"
+        Router -->|Cloud Mode| Gemini[Gemini 1.5 Flash]
+        Gemini --> HybridSearch[Hybrid Search: Tavily Gen + News]
+        HybridSearch --> GeminiEmbed[Gemini Embeddings]
         GeminiEmbed --> ChromaCloud[(ChromaDB: cloud collection)]
     end
 
-    subgraph "Local Mode (🔒 100% Offline)"
+    subgraph "Document Q&A Mode (🔒 100% Offline)"
         Router -->|Local Mode| Ollama[Ollama: llama3.2]
-        Ollama --> DDG[DuckDuckGo Search]
-        DDG --> LocalEmbed[sentence-transformers / MiniLM]
-        LocalEmbed --> ChromaLocal[(ChromaDB: local collection)]
+        Ollama --> PDFUploader[Drag-and-Drop PDF Ingestion]
+        PDFUploader --> PyPDFParser[PyPDF Page-by-Page Chunker]
+        PyPDFParser --> HFEmbed[Sentence Transformers / MiniLM]
+        HFEmbed --> ChromaLocal[(ChromaDB: local collection)]
     end
 
-    ChromaCloud --> Report[Final Synthesized Report with Citations]
-    ChromaLocal --> Report
+    ChromaCloud --> Report[7-Section Step-by-Step Report]
+    ChromaLocal --> QACitation[Citation-Backed QA with Page Markers]
 ```
 
 ---
 
 ## 🧠 Core Architectural Breakdown
 
-The system is built on **LangGraph**, which structures the agent interaction as a stateful, cyclic state machine rather than a simple sequential pipeline.
+The application is structured into two highly optimized workflows depending on your environment needs:
 
-### 1. The Multi-Agent Workflow
-* **🔍 Search & Research Agent**: Takes the user's initial query, plans a search strategy, and dynamically executes parallel search queries. It retrieves raw search results and summarizes them, extracting factual contents and source URLs.
-* **🧠 Critique & Analysis Agent**: Acts as an active peer reviewer and fact-checker. It critically evaluates the gathered information, flags unverified or biased claims, identifies logical contradictions, and specifies gaps that require further search iterations.
-* **📝 Synthesis & Report Agent**: Compiles all verified research summaries, resolves conflicting views, and synthesizes a beautifully formatted Markdown report complete with inline number citations (e.g., `[1]`).
-* **🔄 Cyclic Feedback Loop**: The Critique Agent can trigger the Search Agent to run additional targeted searches up to your chosen `Research Depth` to fill missing information before finalizing the report.
+### 1. Cloud Research Mode (Stateful LangGraph Loop)
+* **🔍 Search & Research Agent**: Formulates targeted queries, executes parallel web searches, and extracts source URLs.
+* **🧠 Critique & Fact-Checking Agent**: Evaluates gathered findings, checks figures across sources (e.g. NSE/BSE listings vs. news articles), and flags outdated data or inconsistencies.
+* **📝 Synthesis & Report Agent**: Compiles verified summaries into a comprehensive step-by-step report.
+* **⚡ Hybrid Search & Core-Relevance Filtering**: Real-time financial/ticker searches (e.g. share prices) run parallel week-scoped news and general searches, filtering out market noise by matching core query keywords.
+* **📋 7-Section Structured Reports**: Reports follow a strict step-by-step layout:
+  1. *Introduction and Background* (at least two detailed paragraphs)
+  2. *Data Collection and Sources* (verified URLs and timestamps)
+  3. *Key Findings* (live values, absolute metrics, structured lists)
+  4. *Detailed Analysis* (multi-paragraph comparisons and reasoning)
+  5. *Supporting Evidence* (empirical statistics)
+  6. *Risks and Limitations* (explicitly categorizing findings into **Confirmed Facts**, **Estimates & Projections**, and **Opinions & Sentiments**)
+  7. *Conclusion and Recommendations*
 
-### 2. The Semantic RAG Engine
-* **Dynamic Chunking**: The generated report is automatically chunked into overlapping passages (1000 characters with 200 character overlap) and ingested into your local **ChromaDB**.
-* **Citation-Aware Q&A**: When asking follow-up questions, the system performs a semantic similarity search in ChromaDB, retrieves the most relevant document chunks, and compiles a comprehensive answer citing exact source materials.
-
----
-
-## 🔌 Dynamic Proxy & Database Isolation
-
-A crucial engineering highlight of this project is its robust runtime flexibility and database integrity:
-
-### 1. Dynamic LLM & Embeddings Proxies
-Rather than importing static model configurations at startup (which would require restarting the server to switch models), the code utilizes lazy-loaded dynamic proxies (`DynamicLLMProxy` and `DynamicEmbeddingsProxy`). These classes intercept standard model calls (`invoke`, `embed_documents`, `embed_query`) and resolve them *on-the-fly* using the currently active environment mode selected in the UI.
-
-### 2. Isolated Vector Storage
-Local embeddings (`all-MiniLM-L6-v2`) output vectors with **384 dimensions**, whereas Google Gemini embeddings output **768 dimensions**. Storing both inside the same vector database collection would cause instant coordinate crashes. 
-The database manager dynamically isolates storage into separate physical folders:
-* **Local Collection**: `chroma_db/local`
-* **Cloud Collection**: `chroma_db/cloud`
-
----
-
-## ✨ Features
-
-* **Multi-Agent Orchestration**: Stateful, cyclic graph modeling built on **LangGraph** with automated fallback search tools.
-* **Segmented Q&A Conversations**: Beautiful, high-fidelity chat dialogue threads (with custom avatar glows and animation states) for follow-up Q&A.
-* **Premium Figma-Inspired UI/UX**: Ultra-premium Streamlit canvas featuring a breathing neon background, custom sliding segmented controllers, and clean, collapsible references.
-* **100% Privacy-Preserved Local Mode**: Bypasses all public APIs and internet connections for full offline data safety.
+### 2. Document Q&A Mode (Offline-First Local RAG Console)
+* **📄 Page-Level PDF Ingestion**: Directly uploads single or multiple PDF documents. Text is extracted page-by-page (mapping metadata like `"page": X`), chunked into overlapping passages (1000 characters, 200 overlap), and embedded using a local CPU model.
+* **🔍 Metadata-Filtered Retrieval**: Semantic search queries are strictly isolated to PDF contents (`filter={"type": "pdf_upload"}`), preventing bleed-through from other caches.
+* **🛡️ Hallucination Guardrails**: If your query cannot be answered by the uploaded documents, the local Ollama LLM is restricted from using pre-trained general knowledge and replies exactly with:
+  > *"The uploaded documents do not contain sufficient information to answer this question."*
+* **🗑️ Document Registry Management**: A premium file manager lists all active indexed PDFs with dynamic page/chunk counts and a trash icon to delete document collections cleanly from ChromaDB.
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Component | Cloud Mode | Local Mode |
+| Component | Cloud Mode (Research) | Local Mode (Document Q&A) |
 |---|---|---|
-| **Core LLM** | Google Gemini API (`gemini-1.5-flash`) | Ollama (`llama3.2`) |
-| **Web Search** | Tavily Search API (Advanced Depth) | DuckDuckGo Search (Rate-limit safe) |
+| **Core LLM** | Google Gemini API (`gemini-1.5-flash`) | Ollama (`llama3.2` running locally) |
+| **Web Search** | Tavily Search API (Hybrid News & Gen) | None (100% Offline Document Scoped) |
 | **Embeddings** | Google Generative AI Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (Local CPU) |
-| **Vector DB** | ChromaDB (`chroma_db/cloud`) | ChromaDB (`chroma_db/local`) |
-| **Orchestration** | LangGraph & LangChain | LangGraph & LangChain |
+| **Vector DB** | ChromaDB (`chroma_db/cloud`) | ChromaDB (`chroma_db/local` isolated folder) |
+| **Orchestration** | LangGraph & LangChain | LangChain & PyPDF Parser |
 | **Backend** | FastAPI & Uvicorn | FastAPI & Uvicorn |
-| **Frontend** | Streamlit (Custom Glassmorphism) | Streamlit (Custom Glassmorphism) |
+| **Frontend** | Streamlit (Figma-Inspired Dark/Light Modes) | Streamlit (Figma-Inspired Dark/Light Modes) |
 
 ---
 
 ## 🚀 Setup & Installation
 
 ### 1. Prerequisites
-Ensure you have **Python 3.10+** installed on your machine.
-
-If you plan to run in **Local Mode**, install Ollama and pull the lightweight model:
-1. Download Ollama from [ollama.com](https://ollama.com) or run:
-   ```bash
-   brew install ollama
-   ```
-2. Pull the default `llama3.2` model:
-   ```bash
-   ollama pull llama3.2
-   ```
-3. Make sure the Ollama application is active and running.
-
----
+* **Python 3.10+** (Python 3.14 compatible)
+* **Ollama** installed on your machine for offline operation.
+  1. Download Ollama from [ollama.com](https://ollama.com).
+  2. Pull the model:
+     ```bash
+     ollama pull llama3.2
+     ```
+  3. Verify Ollama is running (`ollama list`).
 
 ### 2. Installation Steps
 
@@ -115,7 +97,7 @@ If you plan to run in **Local Mode**, install Ollama and pull the lightweight mo
    cd "Multi Agent research agent"
    ```
 
-2. **Set Up a Virtual Environment**:
+2. **Set Up Virtual Environment**:
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
@@ -128,7 +110,7 @@ If you plan to run in **Local Mode**, install Ollama and pull the lightweight mo
    ```
 
 4. **Configure Environment Variables**:
-   Create a `.env` file in the root directory (refer to `.env.example` if available) and add your keys:
+   Create a `.env` file in the root directory:
    ```env
    # Mode Selection: "cloud" or "local"
    LLM_MODE=local
@@ -147,21 +129,21 @@ If you plan to run in **Local Mode**, install Ollama and pull the lightweight mo
 
 ## ⚡ Running the Application
 
-To run the full suite, you will start the FastAPI backend server and the Streamlit frontend UI.
+Both backend and frontend services must run in parallel:
 
 ### Step 1: Start the Backend API
-The FastAPI backend serves the multi-agent endpoints and custom ingestion routes:
+The FastAPI backend serves the multi-agent graph endpoints and ingestion controllers:
 ```bash
 python api.py
 ```
-*The API will be available at `http://localhost:8000`. You can view the interactive OpenAPI documentation at `http://localhost:8000/docs`.*
+*API will listen at `http://localhost:8000`. OpenAPI docs are available at `http://localhost:8000/docs`.*
 
-### Step 2: Start the Frontend UI
-In a separate terminal window (with your virtual environment activated), start the UI:
+### Step 2: Start the Streamlit UI
+Run the frontend dashboard in a separate terminal:
 ```bash
 streamlit run app.py
 ```
-*The UI will launch automatically in your browser at `http://localhost:8501`.*
+*Dashboard will open at `http://localhost:8501`.*
 
 ---
 
@@ -169,22 +151,20 @@ streamlit run app.py
 
 ```text
 ├── agents/
-│   └── research_graph.py  # LangGraph research workflow & agent nodes
+│   └── research_graph.py  # LangGraph research loops & fact-check nodes
 ├── rag/
-│   ├── chroma_db/         # Isolated local Chroma DB directories
-│   └── rag_engine.py      # Vector store retrieval & QA citation system
-├── .env                   # Environment configurations (ignored by git)
-├── .gitignore             # Standard project git ignore rules
+│   ├── chroma_db/         # Dynamic database folder (isolated local vs cloud)
+│   └── rag_engine.py      # PDF parser, ChromaDB client, and local Q&A pipeline
+├── .env                   # Local credentials (git-ignored)
 ├── api.py                 # FastAPI backend entry point
-├── app.py                 # Premium Streamlit UI & conversation canvas
-├── config.py              # Central dynamic mode resolver
-├── requirements.txt       # Project python dependencies
+├── app.py                 # Figma-inspired Streamlit dashboard UI
+├── config.py              # Central dynamic mode, search & embedding resolver
+├── requirements.txt       # Project dependencies
 └── README.md              # Project documentation
 ```
 
 ---
 
-## 🛡️ Security Best Practices
-
-* **API Key Protection**: Never commit your `.env` file. The `.gitignore` file is pre-configured to ensure no secrets or local database folders are pushed to public repositories.
-* **Offline Execution**: Switching to **Local Mode** completely stops all public network calls. All documents, queries, and search actions are handled 100% locally on your computer.
+## 🛡️ Security & Privacy
+* **Strict Offline Mode**: Switching to Document Q&A Mode halts all web calls. Documents, embeddings, and query resolutions are kept entirely local.
+* **Credential Protection**: The `.env` file and `chroma_db/` storage cache directories are blocked from version control via `.gitignore`.

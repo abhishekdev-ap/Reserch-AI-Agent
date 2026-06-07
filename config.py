@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── Dynamic Mode Support ───────────────────────────────────────────────────
+# ─── Dynamic Mode Support (Refreshed Linter Check) ───────────────────────────
 
 _mode_override = None
 
@@ -23,9 +23,16 @@ def set_mode(mode: str):
     if IS_LOCAL:
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["HF_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        os.environ["ANONYMIZED_TELEMETRY"] = "False"
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+        os.environ["DO_NOT_TRACK"] = "1"
     else:
         os.environ.pop("HF_HUB_OFFLINE", None)
         os.environ.pop("HF_OFFLINE", None)
+        os.environ.pop("TRANSFORMERS_OFFLINE", None)
+        os.environ.pop("ANONYMIZED_TELEMETRY", None)
+        os.environ.pop("DO_NOT_TRACK", None)
 
 def get_current_mode() -> str:
     """Get the currently active mode string."""
@@ -44,6 +51,10 @@ IS_LOCAL = is_local_active()
 if IS_LOCAL:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["HF_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["ANONYMIZED_TELEMETRY"] = "False"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["DO_NOT_TRACK"] = "1"
 
 # ─── Cache Containers ────────────────────────────────────────────────────────
 _llm_cache = {}
@@ -155,13 +166,96 @@ def do_web_search(query: str, max_results: int = 7) -> list:
         try:
             from tavily import TavilyClient
             tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
-            response = tavily_client.search(
-                query=query,
-                max_results=max_results,
-                search_depth="advanced",
-                include_raw_content=False,
-            )
-            results = response.get("results", [])
+            
+            # Detect real-time financial or news queries (stock, share price, today, latest, etc.)
+            q_lower = query.lower()
+            realtime_keywords = [
+                "today", "price", "share", "stock", "latest", "current", "now", "news", "rate", 
+                "market", "valuation", "ticker", "ipo", "earnings", "dividend", "quarterly", "nse", "bse"
+            ]
+            is_realtime = any(kw in q_lower for kw in realtime_keywords)
+            
+            news_results = []
+            gen_results = []
+            if is_realtime:
+                # 1. Fetch from General (for stable financial portals like Yahoo Finance, Screener.in, BSE, etc.)
+                try:
+                    gen_kwargs = {
+                        "query": query,
+                        "max_results": max_results,
+                        "search_depth": "advanced",
+                        "include_raw_content": False,
+                        "topic": "general"
+                    }
+                    gen_response = tavily_client.search(**gen_kwargs)
+                    gen_results = gen_response.get("results", [])
+                except Exception as ge:
+                    print(f"⚠️ Tavily general search failed: {ge}")
+
+                # 2. Fetch from News (week-scoped for hot-off-the-press updates)
+                try:
+                    news_kwargs = {
+                        "query": query,
+                        "max_results": max_results,
+                        "search_depth": "advanced",
+                        "include_raw_content": False,
+                        "topic": "news",
+                        "time_range": "week",
+                    }
+                    news_response = tavily_client.search(**news_kwargs)
+                    news_results = news_response.get("results", [])
+                except Exception as ne:
+                    print(f"⚠️ Tavily news search failed: {ne}")
+            else:
+                # Standard non-realtime search using general topic
+                try:
+                    search_kwargs = {
+                        "query": query,
+                        "max_results": max_results,
+                        "search_depth": "advanced",
+                        "include_raw_content": False,
+                        "topic": "general",
+                    }
+                    response = tavily_client.search(**search_kwargs)
+                    gen_results = response.get("results", [])
+                except Exception as se:
+                    print(f"⚠️ Tavily standard search failed: {se}")
+            
+            # Prioritize results that contain the specific subject terms of the query (e.g., 'nsdl')
+            stop_words = {
+                "today", "price", "share", "stock", "latest", "current", "now", "news", "rate", 
+                "market", "valuation", "ticker", "ipo", "earnings", "dividend", "quarterly", "nse", "bse",
+                "of", "and", "the", "in", "is", "a", "for", "on", "what", "tell", "me", "show", "get", "about"
+            }
+            query_words = [w.strip("?,.+-()\"'") for w in q_lower.split()]
+            core_terms = [w for w in query_words if w and w not in stop_words and len(w) > 1]
+            
+            # Combine: prioritize general search, then news search
+            combined_results = gen_results + news_results
+            
+            seen_urls = set()
+            relevant_results = []
+            other_results = []
+            
+            for r in combined_results:
+                url = r.get("url")
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                
+                # Check if it contains at least one core search term in title or content
+                title_lower = r.get("title", "").lower()
+                content_lower = r.get("content", "").lower()
+                
+                has_core_term = any(term in title_lower or term in content_lower for term in core_terms) if core_terms else True
+                if has_core_term:
+                    relevant_results.append(r)
+                else:
+                    other_results.append(r)
+            
+            # Put relevant results first, followed by others, and slice to max_results
+            results = (relevant_results + other_results)[:max_results]
+            
             if results:
                 return results
             print("⚠️ Tavily search returned 0 results. Falling back to local knowledge base...")

@@ -5,6 +5,10 @@ Supports both Cloud (Gemini API) and Local (Ollama) modes.
 import os
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["HF_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["DO_NOT_TRACK"] = "1"
 
 import sys
 import time
@@ -16,7 +20,10 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(__file__))
 
 from agents.research_graph import run_research
-from rag.rag_engine import rag_query, ingest_text, get_collection_stats, clear_collection
+from rag.rag_engine import (
+    rag_query, ingest_text, get_collection_stats, clear_collection,
+    ingest_pdf_bytes, get_uploaded_documents, delete_document, document_qa_query
+)
 from config import get_mode_info, is_local_active
 
 # ─── Page Config ───────────────────────────────────────────────────────────────
@@ -1241,6 +1248,8 @@ if "research_history" not in st.session_state:
     st.session_state.research_history = []
 if "rag_history" not in st.session_state:
     st.session_state.rag_history = []
+if "pdf_qa_history" not in st.session_state:
+    st.session_state.pdf_qa_history = []
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
 
@@ -1471,300 +1480,552 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ─── Tabs ────────────────────────────────────────────────────────────────────
+# ─── Tabs / Dedicated Document Q&A Mode Branching ───────────────────────────
 
-tab1, tab2, tab3 = st.tabs(["🔍  Research", "💬  RAG Q&A", "📄  Ingest Documents"])
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 1: RESEARCH
-# ═══════════════════════════════════════════════════════════════════════════════
-
-with tab1:
+if is_local_active():
+    # Dedicated Local Document Q&A Mode
     st.markdown("""
     <div class="section-head">
-        <div class="section-icon si-search">🔍</div>
-        <div class="section-title-text">Start a Research Task</div>
+        <div class="section-icon si-rag">📂</div>
+        <div class="section-title-text">Local Document Q&A Console</div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Enter any topic — the multi-agent pipeline will autonomously search, analyze, and synthesize a comprehensive report with citations.</div>', unsafe_allow_html=True)
-
-    query = st.text_area(
-        "Research Query",
-        placeholder="e.g. 'What are the latest breakthroughs in quantum computing?' or 'Analyze the impact of AI on healthcare in 2025'",
-        height=110,
-        label_visibility="collapsed",
-    )
-
-    col_btn1, col_btn2, _ = st.columns([1, 1, 4])
-    with col_btn1:
-        run_btn = st.button("🚀 Run Research", use_container_width=True, type="primary")
-    with col_btn2:
-        clear_hist = st.button("🗑️ Clear History", use_container_width=True)
-
-    if clear_hist:
-        st.session_state.research_history = []
-        st.rerun()
-
-    if run_btn:
-        if not query.strip():
-            st.warning("⚠️ Please enter a research query.")
+    st.markdown('<div class="section-subtitle">Upload PDF documents, index them locally in ChromaDB, and query their content with precise citation-aware answers.</div>', unsafe_allow_html=True)
+    
+    # Layout columns
+    col_left, col_right = st.columns([1, 1.8], gap="large")
+    
+    with col_left:
+        st.markdown("### 📄 Document Manager")
+        
+        # 1. PDF File Uploader
+        uploaded_files = st.file_uploader(
+            "Upload PDF Documents",
+            type=["pdf"],
+            accept_multiple_files=True,
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_files:
+            st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+            if st.button("📥 Index Uploaded PDFs", type="primary", use_container_width=True):
+                with st.spinner("Processing, parsing and embedding PDFs..."):
+                    success_count = 0
+                    for f in uploaded_files:
+                        file_bytes = f.read()
+                        try:
+                            chunks = ingest_pdf_bytes(file_bytes, f.name)
+                            if chunks > 0:
+                                success_count += 1
+                        except Exception as e:
+                            st.error(f"Error indexing {f.name}: {e}")
+                    
+                    if success_count > 0:
+                        st.success(f"Successfully indexed {success_count} PDF(s) into ChromaDB!")
+                        time.sleep(0.5)
+                        st.rerun()
+                         
+        # 2. Document List Panel
+        st.markdown('<div style="margin-top: 25px;"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section-title">📂 Indexed Documents</div>', unsafe_allow_html=True)
+        
+        try:
+            indexed_docs = get_uploaded_documents()
+        except Exception as e:
+            st.error(f"Failed to query database: {e}")
+            indexed_docs = []
+            
+        if not indexed_docs:
+            st.markdown("""
+            <div style="
+                background: rgba(255,255,255,0.02);
+                border: 1px dashed rgba(255,255,255,0.06);
+                border-radius: 12px;
+                padding: 20px;
+                text-align: center;
+                color: var(--text-muted);
+                font-size: 0.82rem;
+            ">
+                No local documents uploaded yet.<br/>Drag & drop PDFs above to start!
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            with st.spinner(""):
-                search_provider = get_mode_info()["search"]
-                st.markdown(f"""
-                <div class="research-progress">
-                    <div class="progress-step active">
-                        <div class="progress-dot"></div>
-                        <span>🔍 Search Agent — Gathering data from multiple web sources via {search_provider}...</span>
+            for doc in indexed_docs:
+                # Custom beautiful glass card for each indexed PDF
+                card_cols = st.columns([5, 1])
+                with card_cols[0]:
+                    st.markdown(f"""
+                    <div style="
+                        background: rgba(13, 16, 32, 0.45);
+                        border: 1px solid rgba(255,255,255,0.04);
+                        border-radius: 12px;
+                        padding: 10px 14px;
+                        margin-bottom: 8px;
+                    ">
+                        <div style="font-size: 0.84rem; font-weight: 600; color: var(--text-primary); word-break: break-all;">
+                            📄 {doc['name']}
+                        </div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">
+                            📄 {doc['pages']} pages · 🧩 {doc['chunks']} chunks
+                        </div>
                     </div>
-                    <div class="progress-step">
-                        <div class="progress-dot"></div>
-                        <span>🧠 Critique Agent — Analyzing for gaps, biases and missing perspectives...</span>
+                    """, unsafe_allow_html=True)
+                with card_cols[1]:
+                    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+                    if st.button("🗑️", key=f"del_{doc['name']}", help=f"Delete {doc['name']}", use_container_width=True):
+                        if delete_document(doc['name']):
+                            st.toast(f"Deleted {doc['name']}!", icon="🗑️")
+                            time.sleep(0.5)
+                            st.rerun()
+                             
+        # 3. ChromaDB Status Panel
+        st.markdown('<div style="margin-top: 25px;"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section-title">⚡ ChromaDB Status</div>', unsafe_allow_html=True)
+        
+        try:
+            stats = get_collection_stats()
+            total_chunks = stats['total_chunks']
+            path_val = stats['path']
+            col_name = stats['collection']
+        except Exception as e:
+            total_chunks = 0
+            path_val = "N/A"
+            col_name = "N/A"
+            
+        st.markdown(f"""
+        <div style="
+            background: rgba(34,197,94,0.04);
+            border: 1px solid rgba(34,197,94,0.15);
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        ">
+            🟢 <strong>Status:</strong> Offline Ready<br/>
+            🗄️ <strong>Collection:</strong> {col_name}_local<br/>
+            🧩 <strong>Total chunks:</strong> {total_chunks}<br/>
+            📂 <strong>Storage Path:</strong> <code style="font-size: 0.68rem; color:#86efac; word-break:break-all;">{path_val}/local</code>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_right:
+        st.markdown("### 💬 Document RAG Q&A Terminal")
+        
+        # Check if there are documents
+        if not indexed_docs:
+            st.markdown("""
+            <div style="
+                background: rgba(13,16,32,0.4);
+                border: 1px solid rgba(255,255,255,0.04);
+                border-radius: 20px;
+                padding: 4rem 2rem;
+                text-align: center;
+                margin-bottom: 2rem;
+            ">
+                <div style="font-size: 3.5rem; margin-bottom: 1rem;">📭</div>
+                <h4 style="font-family: 'Space Grotesk', sans-serif !important; font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
+                    Waiting for Documents
+                </h4>
+                <div style="font-size: 0.85rem; color: var(--text-muted); max-width: 400px; margin: 0 auto; line-height: 1.5;">
+                    Please upload and index at least one PDF document on the left panel before asking questions.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # RAG Q&A Interface
+            q_input = st.text_input(
+                "Question Box",
+                placeholder="e.g. 'Summarize the key growth factors' or 'What are the main risks mentioned?'",
+                label_visibility="collapsed"
+            )
+            
+            col_ask1, col_ask2, _ = st.columns([1, 1, 3])
+            with col_ask1:
+                ask_qa = st.button("💬 Ask Document", type="primary", use_container_width=True)
+            with col_ask2:
+                qa_k = st.selectbox("Top Chunks", [3, 5, 8, 10], index=1, label_visibility="collapsed")
+                 
+            if ask_qa:
+                if not q_input.strip():
+                    st.warning("⚠️ Please enter a question.")
+                else:
+                    with st.spinner("Searching local ChromaDB & generating answer..."):
+                        try:
+                            res = document_qa_query(q_input, k=qa_k)
+                            ans = res.get("answer", "")
+                            if isinstance(ans, list):
+                                ans = '\n'.join(
+                                    b.get('text', '') if isinstance(b, dict) else str(b) for b in ans
+                                )
+                            st.session_state.pdf_qa_history.insert(0, {
+                                "question": q_input,
+                                "answer": str(ans),
+                                "sources": res.get("sources", [])
+                            })
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Document Q&A Query failed: {e}")
+                             
+            # Display Q&A History
+            if st.session_state.pdf_qa_history:
+                st.markdown("---")
+                st.markdown('<div class="section-title-text" style="font-size: 1.35rem; margin-bottom: 1.25rem;">💬 Q&A History</div>', unsafe_allow_html=True)
+                
+                for idx, item in enumerate(st.session_state.pdf_qa_history):
+                    # User Bubble
+                    st.markdown(f"""
+                    <div class="chat-message user">
+                        <div class="chat-avatar-wrap">👤</div>
+                        <div class="chat-content">
+                            <div class="chat-content-header">User</div>
+                            <div style="font-weight: 500;">{item['question']}</div>
+                        </div>
                     </div>
-                    <div class="progress-step">
-                        <div class="progress-dot"></div>
-                        <span>📝 Synthesis Agent — Compiling final structured report...</span>
+                    """, unsafe_allow_html=True)
+                    
+                    # Assistant Bubble
+                    st.markdown(f"""
+                    <div class="chat-message assistant">
+                        <div class="chat-avatar-wrap">🤖</div>
+                        <div class="chat-content">
+                            <div class="chat-content-header">AI Local Document Assistant</div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown(item["answer"])
+                    
+                    st.markdown("""
+                        </div>
                     </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Sources/Citations inside expander
+                    if item["sources"]:
+                        # Render citations dynamically
+                        with st.expander(f"📎 View {len(item['sources'])} citations for this answer", expanded=False):
+                            for s_idx, src in enumerate(item["sources"]):
+                                c_cls = f"c{(s_idx % 5) + 1}"
+                                st.markdown(f"""
+                                <div class="cite-card {c_cls}">
+                                    <div class="cite-head">
+                                        <span class="cite-idx">[{src['index']}]</span>
+                                        <span class="cite-score">Relevance: {src['score']}</span>
+                                    </div>
+                                    <div class="cite-title">📄 {src['source']} · Page {src['page']}</div>
+                                    <div style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 6px; font-style: italic; background: rgba(255,255,255,0.01); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                                        "{src['snippet']}"
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    st.markdown('<div style="height: 12px;"></div>', unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style="
+                    background: rgba(13,16,32,0.3);
+                    border: 1px solid rgba(255,255,255,0.03);
+                    border-radius: 16px;
+                    padding: 3rem 2rem;
+                    text-align: center;
+                    margin-top: 1.5rem;
+                ">
+                    <span style="font-size: 2.2rem; display: block; margin-bottom: 0.5rem; opacity: 0.7;">💬</span>
+                    <div style="font-size: 0.94rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Console Ready</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Ask a question about the uploaded PDFs above and witness citation-backed local synthesis.</div>
                 </div>
                 """, unsafe_allow_html=True)
 
-                try:
-                    start_time = time.time()
-                    result = run_research(query, max_iterations=max_iterations)
-                    elapsed = time.time() - start_time
-
-                    def _safe_msg_text(msg):
-                        c = getattr(msg, 'content', None)
-                        if isinstance(c, list):
-                            return '\n'.join(
-                                b.get('text', '') if isinstance(b, dict) else str(b) for b in c
-                            )
-                        return str(c) if c else ''
-
-                    messages = result.get("messages", [])
-                    final_content = result.get("final_report", "")
-                    if not final_content:
-                        for msg in reversed(messages):
-                            text = _safe_msg_text(msg)
-                            if text and len(text) > 100:
-                                final_content = text
-                                break
-
-                    st.session_state.research_history.insert(0, {
-                        "query": query,
-                        "report": final_content,
-                        "iterations": result.get("iteration", 0),
-                        "elapsed": round(elapsed, 1),
-                        "messages": len(messages),
-                    })
-
-                    # Auto-ingest into RAG
-                    if final_content:
-                        try:
-                            ingest_text(final_content, source=f"research:{query[:50]}")
-                        except:
-                            pass
-
-                    st.success(f"✅ Research completed in **{elapsed:.1f}s** — {len(messages)} agent messages processed!")
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"❌ Research failed: {str(e)}")
-                    st.info("💡 Check API keys and internet connection, or try again in a few seconds if rate-limited.")
-
-    # Display research history
-    if st.session_state.research_history:
-        st.markdown("---")
+else:
+    # Cloud Mode (Original Tabs)
+    tab1, tab2, tab3 = st.tabs(["🔍  Research", "💬  RAG Q&A", "📄  Ingest Documents"])
+    
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # TAB 1: RESEARCH
+    # ═══════════════════════════════════════════════════════════════════════════════
+    
+    with tab1:
         st.markdown("""
         <div class="section-head">
-            <div class="section-icon si-search">📋</div>
-            <div class="section-title-text">Research Reports</div>
+            <div class="section-icon si-search">🔍</div>
+            <div class="section-title-text">Start a Research Task</div>
         </div>
         """, unsafe_allow_html=True)
-
-        for i, item in enumerate(st.session_state.research_history):
-            label = f"{'🔬' if i == 0 else '📄'} {item['query'][:80]}{'...' if len(item['query']) > 80 else ''}"
-            with st.expander(label, expanded=(i == 0)):
-                # Stats bar
+        st.markdown('<div class="section-subtitle">Enter any topic — the multi-agent pipeline will autonomously search, analyze, and synthesize a comprehensive report with citations.</div>', unsafe_allow_html=True)
+    
+        query = st.text_area(
+            "Research Query",
+            placeholder="e.g. 'What are the latest breakthroughs in quantum computing?' or 'Analyze the impact of AI on healthcare in 2025'",
+            height=110,
+            label_visibility="collapsed",
+        )
+    
+        col_btn1, col_btn2, _ = st.columns([1, 1, 4])
+        with col_btn1:
+            run_btn = st.button("🚀 Run Research", use_container_width=True, type="primary")
+        with col_btn2:
+            clear_hist = st.button("🗑️ Clear History", use_container_width=True)
+    
+        if clear_hist:
+            st.session_state.research_history = []
+            st.rerun()
+    
+        if run_btn:
+            if not query.strip():
+                st.warning("⚠️ Please enter a research query.")
+            else:
+                with st.spinner(""):
+                    search_provider = get_mode_info()["search"]
+                    st.markdown(f"""
+                    <div class="research-progress">
+                        <div class="progress-step active">
+                            <div class="progress-dot"></div>
+                            <span>🔍 Search Agent — Gathering data from multiple web sources via {search_provider}...</span>
+                        </div>
+                        <div class="progress-step">
+                            <div class="progress-dot"></div>
+                            <span>🧠 Critique Agent — Analyzing for gaps, biases and missing perspectives...</span>
+                        </div>
+                        <div class="progress-step">
+                            <div class="progress-dot"></div>
+                            <span>📝 Synthesis Agent — Compiling final structured report...</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+                    try:
+                        start_time = time.time()
+                        result = run_research(query, max_iterations=max_iterations)
+                        elapsed = time.time() - start_time
+    
+                        def _safe_msg_text(msg):
+                            c = getattr(msg, 'content', None)
+                            if isinstance(c, list):
+                                return '\n'.join(
+                                    b.get('text', '') if isinstance(b, dict) else str(b) for b in c
+                                )
+                            return str(c) if c else ''
+    
+                        messages = result.get("messages", [])
+                        final_content = result.get("final_report", "")
+                        if not final_content:
+                            for msg in reversed(messages):
+                                text = _safe_msg_text(msg)
+                                if text and len(text) > 100:
+                                    final_content = text
+                                    break
+    
+                        st.session_state.research_history.insert(0, {
+                            "query": query,
+                            "report": final_content,
+                            "iterations": result.get("iteration", 0),
+                            "elapsed": round(elapsed, 1),
+                            "messages": len(messages),
+                        })
+    
+                        # Auto-ingest into RAG
+                        if final_content:
+                            try:
+                                ingest_text(final_content, source=f"research: {query[:50]}")
+                            except:
+                                pass
+    
+                        st.success(f"✅ Research completed in **{elapsed:.1f}s** — {len(messages)} agent messages processed!")
+                        st.rerun()
+    
+                    except Exception as e:
+                        st.error(f"❌ Research failed: {str(e)}")
+                        st.info("💡 Check API keys and internet connection, or try again in a few seconds if rate-limited.")
+    
+        # Display research history
+        if st.session_state.research_history:
+            st.markdown("---")
+            st.markdown("""
+            <div class="section-head">
+                <div class="section-icon si-search">📋</div>
+                <div class="section-title-text">Research Reports</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+            for i, item in enumerate(st.session_state.research_history):
+                label = f"{'🔬' if i == 0 else '📄'} {item['query'][:80]}{'...' if len(item['query']) > 80 else ''}"
+                with st.expander(label, expanded=(i == 0)):
+                    # Stats bar
+                    st.markdown(f"""
+                    <div class="report-stats">
+                        <div class="r-stat">🔄 Iterations: <span class="r-stat-val">{item['iterations']}</span></div>
+                        <div class="r-stat">💬 Messages: <span class="r-stat-val">{item['messages']}</span></div>
+                        <div class="r-stat">⏱️ Time: <span class="r-stat-val">{item['elapsed']}s</span></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+                    if item["report"]:
+                        st.markdown(item["report"])
+                    else:
+                        st.info("No report content was generated. Try a more specific query.")
+        else:
+            st.markdown("""
+            <div class="empty-state">
+                <span class="empty-icon">🧪</span>
+                <div class="empty-title">Ready to research anything</div>
+                <div class="empty-desc">Enter a query above and click Run Research. The multi-agent system will autonomously search, critique, and compile a report.</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # TAB 2: RAG Q&A
+    # ═══════════════════════════════════════════════════════════════════════════════
+    
+    with tab2:
+        st.markdown("""
+        <div class="section-head">
+            <div class="section-icon si-rag">💬</div>
+            <div class="section-title-text">Query Your Knowledge Base</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Ask follow-up questions about previously researched topics. Answers are generated with source citations from the knowledge base.</div>', unsafe_allow_html=True)
+    
+        rag_q = st.text_input(
+            "Question",
+            placeholder="e.g. 'What are the key benefits of quantum computing?' or 'Summarize the findings about AI governance'",
+            label_visibility="collapsed",
+        )
+    
+        col_r1, col_r2, _ = st.columns([1, 1, 4])
+        with col_r1:
+            ask_btn = st.button("💬 Ask Question", use_container_width=True, type="primary")
+        with col_r2:
+            rag_k = st.selectbox("Top-K", [3, 5, 8, 10], index=1, label_visibility="collapsed")
+    
+        if ask_btn:
+            if not rag_q.strip():
+                st.warning("⚠️ Please enter a question.")
+            elif kb_chunks == 0:
+                st.warning("📭 Knowledge base is empty. Run a research query first to populate it.")
+            else:
+                with st.spinner("🔍 Searching knowledge base..."):
+                    try:
+                        result = rag_query(rag_q, k=rag_k)
+                        answer_text = result.get("answer", "")
+                        if isinstance(answer_text, list):
+                            answer_text = '\n'.join(
+                                b.get('text', '') if isinstance(b, dict) else str(b) for b in answer_text
+                            )
+                        st.session_state.rag_history.insert(0, {
+                            "question": rag_q,
+                            "answer": str(answer_text),
+                            "sources": result.get("sources", []),
+                        })
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ RAG query failed: {str(e)}")
+    
+        if st.session_state.rag_history:
+            st.markdown("---")
+            st.markdown('<div class="section-title-text" style="font-size: 1.4rem; margin-bottom: 1.25rem;">💬 Conversation History</div>', unsafe_allow_html=True)
+            
+            for i, item in enumerate(st.session_state.rag_history):
+                # 1. User Chat Bubble
                 st.markdown(f"""
-                <div class="report-stats">
-                    <div class="r-stat">🔄 Iterations: <span class="r-stat-val">{item['iterations']}</span></div>
-                    <div class="r-stat">💬 Messages: <span class="r-stat-val">{item['messages']}</span></div>
-                    <div class="r-stat">⏱️ Time: <span class="r-stat-val">{item['elapsed']}s</span></div>
+                <div class="chat-message user">
+                    <div class="chat-avatar-wrap">👤</div>
+                    <div class="chat-content">
+                        <div class="chat-content-header">User</div>
+                        <div style="font-weight: 500;">{item['question']}</div>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
-
-                if item["report"]:
-                    st.markdown(item["report"])
-                else:
-                    st.info("No report content was generated. Try a more specific query.")
-    else:
-        st.markdown("""
-        <div class="empty-state">
-            <span class="empty-icon">🧪</span>
-            <div class="empty-title">Ready to research anything</div>
-            <div class="empty-desc">Enter a query above and click Run Research. The multi-agent system will autonomously search, critique, and compile a report.</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 2: RAG Q&A
-# ═══════════════════════════════════════════════════════════════════════════════
-
-with tab2:
-    st.markdown("""
-    <div class="section-head">
-        <div class="section-icon si-rag">💬</div>
-        <div class="section-title-text">Query Your Knowledge Base</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Ask follow-up questions about previously researched topics. Answers are generated with source citations from the knowledge base.</div>', unsafe_allow_html=True)
-
-    rag_q = st.text_input(
-        "Question",
-        placeholder="e.g. 'What are the key benefits of quantum computing?' or 'Summarize the findings about AI governance'",
-        label_visibility="collapsed",
-    )
-
-    col_r1, col_r2, _ = st.columns([1, 1, 4])
-    with col_r1:
-        ask_btn = st.button("💬 Ask Question", use_container_width=True, type="primary")
-    with col_r2:
-        rag_k = st.selectbox("Top-K", [3, 5, 8, 10], index=1, label_visibility="collapsed")
-
-    if ask_btn:
-        if not rag_q.strip():
-            st.warning("⚠️ Please enter a question.")
-        elif kb_chunks == 0:
-            st.warning("📭 Knowledge base is empty. Run a research query first to populate it.")
-        else:
-            with st.spinner("🔍 Searching knowledge base..."):
-                try:
-                    result = rag_query(rag_q, k=rag_k)
-                    answer_text = result.get("answer", "")
-                    if isinstance(answer_text, list):
-                        answer_text = '\n'.join(
-                            b.get('text', '') if isinstance(b, dict) else str(b) for b in answer_text
-                        )
-                    st.session_state.rag_history.insert(0, {
-                        "question": rag_q,
-                        "answer": str(answer_text),
-                        "sources": result.get("sources", []),
-                    })
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ RAG query failed: {str(e)}")
-
-    if st.session_state.rag_history:
-        st.markdown("---")
-        st.markdown('<div class="section-title-text" style="font-size: 1.4rem; margin-bottom: 1.25rem;">💬 Conversation History</div>', unsafe_allow_html=True)
-        
-        for i, item in enumerate(st.session_state.rag_history):
-            # 1. User Chat Bubble
-            st.markdown(f"""
-            <div class="chat-message user">
-                <div class="chat-avatar-wrap">👤</div>
-                <div class="chat-content">
-                    <div class="chat-content-header">User</div>
-                    <div style="font-weight: 500;">{item['question']}</div>
+                
+                # 2. Assistant Chat Bubble (Wraps actual markdown rendering inside the HTML bubble layout)
+                st.markdown(f"""
+                <div class="chat-message assistant">
+                    <div class="chat-avatar-wrap">🤖</div>
+                    <div class="chat-content">
+                        <div class="chat-content-header">AI Research Assistant</div>
+                """, unsafe_allow_html=True)
+                
+                # Render the markdown answer directly so it retains code highlights and markdown properties
+                st.markdown(item["answer"])
+                
+                # Close the Assistant Bubble and append dynamic sources
+                st.markdown("""
+                    </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 2. Assistant Chat Bubble (Wraps actual markdown rendering inside the HTML bubble layout)
-            st.markdown(f"""
-            <div class="chat-message assistant">
-                <div class="chat-avatar-wrap">🤖</div>
-                <div class="chat-content">
-                    <div class="chat-content-header">AI Research Assistant</div>
-            """, unsafe_allow_html=True)
-            
-            # Render the markdown answer directly so it retains code highlights and markdown properties
-            st.markdown(item["answer"])
-            
-            # Close the Assistant Bubble and append dynamic sources
-            st.markdown("""
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if item["sources"]:
-                with st.expander(f"📎 View {len(item['sources'])} References & Citations for this answer", expanded=False):
-                    for j, src in enumerate(item["sources"]):
-                        color_cls = f"c{(j % 5) + 1}"
-                        st.markdown(f"""
-                        <div class="cite-card {color_cls}">
-                            <div class="cite-head">
-                                <span class="cite-idx">[{src['index']}]</span>
-                                <span class="cite-score">Score: {src['score']}</span>
+                """, unsafe_allow_html=True)
+                
+                if item["sources"]:
+                    with st.expander(f"📎 View {len(item['sources'])} References & Citations for this answer", expanded=False):
+                        for j, src in enumerate(item["sources"]):
+                            color_cls = f"c{(j % 5) + 1}"
+                            st.markdown(f"""
+                            <div class="cite-card {color_cls}">
+                                <div class="cite-head">
+                                    <span class="cite-idx">[{src['index']}]</span>
+                                    <span class="cite-score">Score: {src['score']}</span>
+                                </div>
+                                <div class="cite-title">{src.get('title') or 'Untitled Source'}</div>
+                                <div class="cite-url">🔗 {src['source']}</div>
                             </div>
-                            <div class="cite-title">{src.get('title') or 'Untitled Source'}</div>
-                            <div class="cite-url">🔗 {src['source']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-            st.markdown('<div style="height: 12px;"></div>', unsafe_allow_html=True)
-    else:
+                            """, unsafe_allow_html=True)
+                st.markdown('<div style="height: 12px;"></div>', unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="empty-state">
+                <span class="empty-icon">💬</span>
+                <div class="empty-title">Your knowledge base awaits</div>
+                <div class="empty-desc">Run a research query first to populate the knowledge base, then ask follow-up questions here with source citations.</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # TAB 3: INGEST DOCUMENTS
+    # ═══════════════════════════════════════════════════════════════════════════════
+    
+    with tab3:
         st.markdown("""
-        <div class="empty-state">
-            <span class="empty-icon">💬</span>
-            <div class="empty-title">Your knowledge base awaits</div>
-            <div class="empty-desc">Run a research query first to populate the knowledge base, then ask follow-up questions here with source citations.</div>
+        <div class="section-head">
+            <div class="section-icon si-ingest">📄</div>
+            <div class="section-title-text">Ingest Custom Documents</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Add your own text to the knowledge base. Ingested content will be chunked, embedded, and made available for RAG queries.</div>', unsafe_allow_html=True)
+    
+        col_i1, col_i2 = st.columns([3, 1])
+        with col_i1:
+            ingest_source = st.text_input(
+                "Source Label",
+                placeholder="e.g. 'research_paper', 'meeting_notes', 'article_summary'",
+                value="manual"
+            )
+        with col_i2:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    
+        ingest_content = st.text_area(
+            "Text Content",
+            placeholder="Paste any text here — articles, research papers, notes, documentation, transcripts...",
+            height=260,
+        )
+    
+        if st.button("📥 Ingest into Knowledge Base", type="primary"):
+            if not ingest_content.strip():
+                st.warning("⚠️ Please provide some text to ingest.")
+            else:
+                with st.spinner("📥 Chunking, embedding, and indexing..."):
+                    try:
+                        n_chunks = ingest_text(ingest_content, source=ingest_source)
+                        st.success(f"✅ Successfully ingested **{n_chunks} chunks** from '{ingest_source}' into the knowledge base!")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"❌ Ingestion failed: {str(e)}")
+    
+        st.markdown("""
+        <div class="tips-box">
+            <div class="tips-title">💡 Tips for best results</div>
+            <ul>
+                <li>Ingest multiple related documents to get richer, cross-referenced answers</li>
+                <li>Each research run automatically ingests its report into the knowledge base</li>
+                <li>The RAG engine searches all ingested content when you query</li>
+                <li>Use descriptive source labels to track where information came from</li>
+                <li>Larger texts are automatically split into 1000-character chunks with 200-char overlap</li>
+            </ul>
         </div>
         """, unsafe_allow_html=True)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3: INGEST DOCUMENTS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-with tab3:
-    st.markdown("""
-    <div class="section-head">
-        <div class="section-icon si-ingest">📄</div>
-        <div class="section-title-text">Ingest Custom Documents</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Add your own text to the knowledge base. Ingested content will be chunked, embedded, and made available for RAG queries.</div>', unsafe_allow_html=True)
-
-    col_i1, col_i2 = st.columns([3, 1])
-    with col_i1:
-        ingest_source = st.text_input(
-            "Source Label",
-            placeholder="e.g. 'research_paper', 'meeting_notes', 'article_summary'",
-            value="manual"
-        )
-    with col_i2:
-        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-
-    ingest_content = st.text_area(
-        "Text Content",
-        placeholder="Paste any text here — articles, research papers, notes, documentation, transcripts...",
-        height=260,
-    )
-
-    if st.button("📥 Ingest into Knowledge Base", type="primary"):
-        if not ingest_content.strip():
-            st.warning("⚠️ Please provide some text to ingest.")
-        else:
-            with st.spinner("📥 Chunking, embedding, and indexing..."):
-                try:
-                    n_chunks = ingest_text(ingest_content, source=ingest_source)
-                    st.success(f"✅ Successfully ingested **{n_chunks} chunks** from '{ingest_source}' into the knowledge base!")
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"❌ Ingestion failed: {str(e)}")
-
-    st.markdown("""
-    <div class="tips-box">
-        <div class="tips-title">💡 Tips for best results</div>
-        <ul>
-            <li>Ingest multiple related documents to get richer, cross-referenced answers</li>
-            <li>Each research run automatically ingests its report into the knowledge base</li>
-            <li>The RAG engine searches all ingested content when you query</li>
-            <li>Use descriptive source labels to track where information came from</li>
-            <li>Larger texts are automatically split into 1000-character chunks with 200-char overlap</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
