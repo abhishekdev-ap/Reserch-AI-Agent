@@ -1077,30 +1077,81 @@ hr {
 .light-mode .si-rag     { background: linear-gradient(135deg, rgba(168,85,247,0.1), rgba(244,114,182,0.08)) !important; }
 .light-mode .si-ingest  { background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(56,189,248,0.08)) !important; }
 
-/* Inputs */
-.light-mode .stTextInput input,
-.light-mode .stTextArea textarea,
-.light-mode .stTextInput > div > div > input,
-.light-mode .stTextArea > div > div > textarea {
+/* Widget Labels & Captions */
+.stApp.light-mode label,
+.stApp.light-mode [data-testid="stWidgetLabel"] p,
+.stApp.light-mode [data-testid="stWidgetLabel"] {
+    color: #1e293b !important;
+}
+
+/* Slider Scale ticks & labels */
+.stApp.light-mode [data-testid="stSlider"] span,
+.stApp.light-mode [data-testid="stSlider"] p,
+.stApp.light-mode [data-testid="stSliderTickBar"] div,
+.stApp.light-mode [data-testid="stSliderTickBarMin"],
+.stApp.light-mode [data-testid="stSliderTickBarMax"] {
+    color: #475569 !important;
+}
+.stApp.light-mode [data-testid="stThumbValue"] {
+    color: #4f46e5 !important;
+    font-weight: 700 !important;
+}
+
+/* Sidebar Environment Switcher Buttons (Active) */
+.stApp.light-mode section[data-testid="stSidebar"] button[class*="1k5care"],
+.stApp.light-mode section[data-testid="stSidebar"] .st-emotion-cache-1k5care {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2) !important;
+}
+.stApp.light-mode section[data-testid="stSidebar"] button[class*="1k5care"] *,
+.stApp.light-mode section[data-testid="stSidebar"] .st-emotion-cache-1k5care * {
+    color: #ffffff !important;
+}
+
+/* Sidebar Environment Switcher Buttons (Inactive) */
+.stApp.light-mode section[data-testid="stSidebar"] button[class*="197ja7m"],
+.stApp.light-mode section[data-testid="stSidebar"] .st-emotion-cache-197ja7m {
+    background: rgba(0, 0, 0, 0.05) !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+.stApp.light-mode section[data-testid="stSidebar"] button[class*="197ja7m"] *,
+.stApp.light-mode section[data-testid="stSidebar"] .st-emotion-cache-197ja7m * {
+    color: #475569 !important;
+}
+
+/* Inputs & Textareas */
+.stApp.light-mode .stTextInput input,
+.stApp.light-mode .stTextArea textarea,
+.stApp.light-mode .stTextInput > div > div > input,
+.stApp.light-mode .stTextArea > div > div > textarea,
+.stApp.light-mode textarea,
+.stApp.light-mode input {
     background: #ffffff !important;
     border-color: rgba(99, 102, 241, 0.3) !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
+    color: #1e293b !important;
+    -webkit-text-fill-color: #1e293b !important;
+    caret-color: #1e293b !important;
 }
-.light-mode .stTextInput input:focus,
-.light-mode .stTextArea textarea:focus,
-.light-mode .stTextInput > div > div > input:focus,
-.light-mode .stTextArea > div > div > textarea:focus {
+.stApp.light-mode .stTextInput input:focus,
+.stApp.light-mode .stTextArea textarea:focus,
+.stApp.light-mode .stTextInput > div > div > input:focus,
+.stApp.light-mode .stTextArea > div > div > textarea:focus,
+.stApp.light-mode textarea:focus,
+.stApp.light-mode input:focus {
     background: #ffffff !important;
     border-color: #4f46e5 !important;
     box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
+    color: #1e293b !important;
+    -webkit-text-fill-color: #1e293b !important;
+    caret-color: #1e293b !important;
 }
-.light-mode .stTextInput input::placeholder,
-.light-mode .stTextArea textarea::placeholder,
-.light-mode .stTextInput > div > div > input::placeholder,
-.light-mode .stTextArea > div > div > textarea::placeholder {
+.stApp.light-mode .stTextInput input::placeholder,
+.stApp.light-mode .stTextArea textarea::placeholder,
+.stApp.light-mode .stTextInput > div > div > input::placeholder,
+.stApp.light-mode .stTextArea > div > div > textarea::placeholder,
+.stApp.light-mode textarea::placeholder,
+.stApp.light-mode input::placeholder {
     color: #888888 !important;
     -webkit-text-fill-color: #888888 !important;
 }
