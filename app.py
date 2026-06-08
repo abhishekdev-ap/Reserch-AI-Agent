@@ -511,35 +511,61 @@ section[data-testid="stSidebar"] > div:first-child {
     transform: translateY(-1px) !important;
 }
 
-/* ═══ INPUTS ═══ */
+/* ═══ TEXT INPUTS & TEXTAREAS CONTAINER REDESIGN ═══ */
+div[data-baseweb="input"],
+div[data-baseweb="textarea"] {
+    background: rgba(13, 16, 32, 0.45) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 10px 16px !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+div[data-baseweb="input"]:hover,
+div[data-baseweb="textarea"]:hover {
+    border-color: rgba(99, 102, 241, 0.35) !important;
+}
+div[data-baseweb="input"]:focus-within,
+div[data-baseweb="textarea"]:focus-within {
+    border-color: var(--primary) !important;
+    background: rgba(13, 16, 32, 0.55) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Clear default Streamlit inner wrapper outlines and backgrounds */
+div[data-baseweb="input"] > div,
+div[data-baseweb="textarea"] > div {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+/* Inner input and textarea elements standard styling */
 .stTextInput input,
 .stTextArea textarea,
 .stTextInput > div > div > input,
-.stTextArea > div > div > textarea {
-    background: #ffffff !important;
-    border: 1px solid rgba(99, 102, 241, 0.3) !important;
-    border-radius: 12px !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    font-size: 0.92rem !important;
-    transition: all 0.3s !important;
+.stTextArea > div > div > textarea,
+textarea,
+input {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    font-size: 0.94rem !important;
+    padding: 0 !important;
+    caret-color: var(--primary) !important;
 }
-.stTextInput input:focus,
-.stTextArea textarea:focus,
-.stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
-    border-color: var(--primary) !important;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-}
+
 .stTextInput input::placeholder,
 .stTextArea textarea::placeholder,
-.stTextInput > div > div > input::placeholder,
-.stTextArea > div > div > textarea::placeholder {
-    color: #888888 !important;
-    -webkit-text-fill-color: #888888 !important;
+textarea::placeholder,
+input::placeholder {
+    color: var(--text-muted) !important;
+    -webkit-text-fill-color: var(--text-muted) !important;
+    opacity: 0.7 !important;
 }
 
 /* ═══ SELECT BOX ═══ */
@@ -1121,39 +1147,34 @@ hr {
 }
 
 /* Inputs & Textareas */
-.stApp.light-mode .stTextInput input,
-.stApp.light-mode .stTextArea textarea,
-.stApp.light-mode .stTextInput > div > div > input,
-.stApp.light-mode .stTextArea > div > div > textarea,
-.stApp.light-mode textarea,
-.stApp.light-mode input {
+.stApp.light-mode div[data-baseweb="input"],
+.stApp.light-mode div[data-baseweb="textarea"] {
     background: #ffffff !important;
-    border-color: rgba(99, 102, 241, 0.3) !important;
-    color: #1e293b !important;
-    -webkit-text-fill-color: #1e293b !important;
-    caret-color: #1e293b !important;
+    border: 1px solid rgba(99, 102, 241, 0.2) !important;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03) !important;
 }
-.stApp.light-mode .stTextInput input:focus,
-.stApp.light-mode .stTextArea textarea:focus,
-.stApp.light-mode .stTextInput > div > div > input:focus,
-.stApp.light-mode .stTextArea > div > div > textarea:focus,
-.stApp.light-mode textarea:focus,
-.stApp.light-mode input:focus {
+.stApp.light-mode div[data-baseweb="input"]:hover,
+.stApp.light-mode div[data-baseweb="textarea"]:hover {
+    border-color: rgba(99, 102, 241, 0.45) !important;
+}
+.stApp.light-mode div[data-baseweb="input"]:focus-within,
+.stApp.light-mode div[data-baseweb="textarea"]:focus-within {
     background: #ffffff !important;
     border-color: #4f46e5 !important;
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12), 0 4px 10px rgba(79, 70, 229, 0.05) !important;
+}
+.stApp.light-mode textarea,
+.stApp.light-mode input {
     color: #1e293b !important;
     -webkit-text-fill-color: #1e293b !important;
     caret-color: #1e293b !important;
 }
-.stApp.light-mode .stTextInput input::placeholder,
-.stApp.light-mode .stTextArea textarea::placeholder,
-.stApp.light-mode .stTextInput > div > div > input::placeholder,
-.stApp.light-mode .stTextArea > div > div > textarea::placeholder,
 .stApp.light-mode textarea::placeholder,
-.stApp.light-mode input::placeholder {
-    color: #888888 !important;
-    -webkit-text-fill-color: #888888 !important;
+.stApp.light-mode input::placeholder,
+.stApp.light-mode .stTextInput input::placeholder,
+.stApp.light-mode .stTextArea textarea::placeholder {
+    color: #94a3b8 !important;
+    -webkit-text-fill-color: #94a3b8 !important;
 }
 
 /* Buttons */
