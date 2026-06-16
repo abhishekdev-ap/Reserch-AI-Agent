@@ -25,8 +25,12 @@ graph TD
     subgraph "Document Q&A Mode (🔒 100% Offline)"
         Router -->|Local Mode| Ollama[Ollama: llama3.2]
         Ollama --> PDFUploader[Drag-and-Drop PDF Ingestion]
-        PDFUploader --> PyPDFParser[PyPDF Page-by-Page Chunker]
-        PyPDFParser --> HFEmbed[Sentence Transformers / MiniLM]
+        PDFUploader --> PyPDFParser[PyPDF + OCR Fallback Parser]
+        PyPDFParser --> TextDensityCheck{Text Density Guard}
+        TextDensityCheck -->|Density < 150 chars/pg| FlagScanned[Tag 'low_density' Warning]
+        TextDensityCheck -->|Normal| split[Parent-Child Chunker]
+        FlagScanned --> split
+        split --> HFEmbed[Sentence Transformers / MiniLM]
         HFEmbed --> ChromaLocal[(ChromaDB: local collection)]
     end
 
@@ -55,11 +59,15 @@ The application is structured into two highly optimized workflows depending on y
   7. *Conclusion and Recommendations*
 
 ### 2. Document Q&A Mode (Offline-First Local RAG Console)
-* **📄 Page-Level PDF Ingestion**: Directly uploads single or multiple PDF documents. Text is extracted page-by-page (mapping metadata like `"page": X`), chunked into overlapping passages (1000 characters, 200 overlap), and embedded using a local CPU model.
-* **🔍 Metadata-Filtered Retrieval**: Semantic search queries are strictly isolated to PDF contents (`filter={"type": "pdf_upload"}`), preventing bleed-through from other caches.
-* **🛡️ Hallucination Guardrails**: If your query cannot be answered by the uploaded documents, the local Ollama LLM is restricted from using pre-trained general knowledge and replies exactly with:
-  > *"The uploaded documents do not contain sufficient information to answer this question."*
-* **🗑️ Document Registry Management**: A premium file manager lists all active indexed PDFs with dynamic page/chunk counts and a trash icon to delete document collections cleanly from ChromaDB.
+* **📄 Multi-Stage PDF Ingestion with OCR Fallback**: Extracts page text dynamically. If standard extraction returns blank or sparse text, it executes a high-resolution OCR fallback (`pdf2image` + `pytesseract`) page-by-page.
+* **🛡️ Text Density Guard**: Automatically checks character-to-page density. If the document yields `< 150` characters per page on average (indicative of handwriting or flat image scans), the system tags it in the database and throws warning banners (`⚠️ Scanned/Handwritten (Low Accuracy)`) in the UI to prevent silent retrieval failures.
+* **🧩 Parent-Child Chunking**: Embeds smaller **Child Chunks** (200 characters) to ensure precise semantic matching during vector searches, but retrieves and sends the corresponding larger **Parent Chunks** (1000 characters) to the LLM to preserve narrative flow and surrounding context.
+* **🔍 Multi-Query Expansion**: Uses the local LLM to rewrite user questions into 3 distinct variations, performing parallel similarity queries to optimize recall.
+* **📏 Distance-to-Similarity Calibration**: Converts ChromaDB's default squared L2 distance metrics to a proper `0.0 - 1.0` cosine-like similarity score: `similarity = max(0.0, 1.0 - distance / 2.0)`.
+* **⚖️ Custom Hybrid Re-ranking Layer**: Reranks vector retrieval candidate blocks using exact phrase matches, term proximity windows, and keyword density matching (TF-IDF approximation).
+* **🧠 Self-RAG Fact-Checking Loop**: Intercepts the generated answer draft and evaluates it against the raw document context using a temperature-0.0 factual checker agent. If claims are unsupported, it triggers a refinement loop to rewrite the answer.
+* **🎯 Calibrated Confidence Scoring**: Uses scaled vector similarity and re-ranking metrics combined with keyword coverage and factuality outputs to display intuitive, realistic confidence ratings (e.g. `High (95%)`).
+* **⚙️ RAG Pipeline Debugger Dashboard**: Embeds a collapsible developer panel under each assistant bubble showing collection names, scores, pages retrieved, context token counts, prompt lengths, and models used.
 
 ---
 
@@ -72,6 +80,7 @@ The application is structured into two highly optimized workflows depending on y
 | **Embeddings** | Google Generative AI Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (Local CPU) |
 | **Vector DB** | ChromaDB (`chroma_db/cloud`) | ChromaDB (`chroma_db/local` isolated folder) |
 | **Orchestration** | LangGraph & LangChain | LangChain & PyPDF Parser |
+| **OCR Fallback** | None | Poppler (`pdf2image`) & Tesseract (`pytesseract`) |
 | **Backend** | FastAPI & Uvicorn | FastAPI & Uvicorn |
 | **Frontend** | Streamlit (Figma-Inspired Dark/Light Modes) | Streamlit (Figma-Inspired Dark/Light Modes) |
 
@@ -88,6 +97,9 @@ The application is structured into two highly optimized workflows depending on y
      ollama pull llama3.2
      ```
   3. Verify Ollama is running (`ollama list`).
+* **Tesseract & Poppler** (required for OCR Fallback on scanned documents):
+  - macOS: `brew install tesseract poppler`
+  - Linux: `sudo apt-get install tesseract-ocr poppler-utils`
 
 ### 2. Installation Steps
 
@@ -154,7 +166,7 @@ streamlit run app.py
 │   └── research_graph.py  # LangGraph research loops & fact-check nodes
 ├── rag/
 │   ├── chroma_db/         # Dynamic database folder (isolated local vs cloud)
-│   └── rag_engine.py      # PDF parser, ChromaDB client, and local Q&A pipeline
+│   └── rag_engine.py      # PDF/OCR parser, ChromaDB client, and local Q&A pipeline
 ├── .env                   # Local credentials (git-ignored)
 ├── api.py                 # FastAPI backend entry point
 ├── app.py                 # Figma-inspired Streamlit dashboard UI

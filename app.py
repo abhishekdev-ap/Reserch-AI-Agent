@@ -22,9 +22,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from agents.research_graph import run_research
 from rag.rag_engine import (
     rag_query, ingest_text, get_collection_stats, clear_collection,
-    ingest_pdf_bytes, get_uploaded_documents, delete_document, document_qa_query
+    ingest_pdf_bytes, get_uploaded_documents, delete_document, document_qa_query,
+    ingest_local_file, generate_document_summary, get_kb_documents,
+    index_local_directory, general_chat_stream, document_qa_stream
 )
-from config import get_mode_info, is_local_active
+from config import get_mode_info, is_local_active, get_local_ollama_models
 
 # ─── Page Config ───────────────────────────────────────────────────────────────
 
@@ -516,7 +518,7 @@ div[data-baseweb="input"],
 div[data-baseweb="textarea"] {
     background: rgba(13, 16, 32, 0.45) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-radius: var(--radius-md) !important;
+    border-radius: 12px !important;
     padding: 10px 16px !important;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
@@ -530,6 +532,24 @@ div[data-baseweb="textarea"]:focus-within {
     border-color: var(--primary) !important;
     background: rgba(13, 16, 32, 0.55) !important;
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Chat Input Overrides for Dark Mode */
+div[data-testid="stChatInput"] {
+    background: rgba(13, 16, 32, 0.45) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 14px !important;
+    padding: 6px 12px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+    transition: all 0.3s ease !important;
+}
+div[data-testid="stChatInput"]:focus-within {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+}
+div[data-testid="stChatInput"] textarea {
+    color: var(--text-primary) !important;
+    caret-color: var(--primary) !important;
 }
 
 /* Clear default Streamlit inner wrapper outlines and backgrounds */
@@ -1150,31 +1170,50 @@ hr {
 .stApp.light-mode div[data-baseweb="input"],
 .stApp.light-mode div[data-baseweb="textarea"] {
     background: #ffffff !important;
-    border: 1px solid rgba(99, 102, 241, 0.2) !important;
+    border: 1px solid rgba(99, 102, 241, 0.22) !important;
+    border-radius: 12px !important;
+    padding: 10px 16px !important;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 .stApp.light-mode div[data-baseweb="input"]:hover,
 .stApp.light-mode div[data-baseweb="textarea"]:hover {
-    border-color: rgba(99, 102, 241, 0.45) !important;
+    border-color: rgba(99, 102, 241, 0.5) !important;
 }
 .stApp.light-mode div[data-baseweb="input"]:focus-within,
 .stApp.light-mode div[data-baseweb="textarea"]:focus-within {
     background: #ffffff !important;
     border-color: #4f46e5 !important;
-    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12), 0 4px 10px rgba(79, 70, 229, 0.05) !important;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.14), 0 4px 10px rgba(79, 70, 229, 0.06) !important;
 }
 .stApp.light-mode textarea,
 .stApp.light-mode input {
-    color: #1e293b !important;
-    -webkit-text-fill-color: #1e293b !important;
-    caret-color: #1e293b !important;
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    caret-color: #4f46e5 !important;
 }
 .stApp.light-mode textarea::placeholder,
 .stApp.light-mode input::placeholder,
 .stApp.light-mode .stTextInput input::placeholder,
 .stApp.light-mode .stTextArea textarea::placeholder {
-    color: #94a3b8 !important;
-    -webkit-text-fill-color: #94a3b8 !important;
+    color: #64748b !important;
+    -webkit-text-fill-color: #64748b !important;
+}
+
+/* Chat Input Overrides for Light Mode */
+.stApp.light-mode div[data-testid="stChatInput"] {
+    background: #ffffff !important;
+    border: 1px solid rgba(99, 102, 241, 0.25) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+    border-radius: 14px !important;
+}
+.stApp.light-mode div[data-testid="stChatInput"]:focus-within {
+    border-color: #4f46e5 !important;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.14), 0 4px 15px rgba(0, 0, 0, 0.08) !important;
+}
+.stApp.light-mode div[data-testid="stChatInput"] textarea {
+    color: #0f172a !important;
+    caret-color: #4f46e5 !important;
 }
 
 /* Buttons */
@@ -1419,6 +1458,53 @@ h1, h2, h3, h4, h5, h6,
 """, unsafe_allow_html=True)
 
 
+CHATS_DIR = os.path.join(os.path.dirname(__file__), ".history", "local_chats")
+os.makedirs(CHATS_DIR, exist_ok=True)
+INDEX_FILE = os.path.join(CHATS_DIR, "index.json")
+
+def load_chats_index():
+    if os.path.exists(INDEX_FILE):
+        try:
+            with open(INDEX_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_chats_index(index):
+    try:
+        with open(INDEX_FILE, "w") as f:
+            json.dump(index, f, indent=2)
+    except Exception:
+        pass
+
+def load_chat_history(chat_id):
+    chat_file = os.path.join(CHATS_DIR, f"{chat_id}.json")
+    if os.path.exists(chat_file):
+        try:
+            with open(chat_file, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_chat_history(chat_id, history):
+    chat_file = os.path.join(CHATS_DIR, f"{chat_id}.json")
+    try:
+        with open(chat_file, "w") as f:
+            json.dump(history, f, indent=2)
+    except Exception:
+        pass
+
+def delete_chat_history(chat_id):
+    chat_file = os.path.join(CHATS_DIR, f"{chat_id}.json")
+    if os.path.exists(chat_file):
+        try:
+            os.remove(chat_file)
+        except Exception:
+            pass
+
+
 # ─── Session State Init ─────────────────────────────────────────────────────────
 
 if "research_history" not in st.session_state:
@@ -1430,6 +1516,27 @@ if "pdf_qa_history" not in st.session_state:
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
 
+if "local_chats_index" not in st.session_state:
+    st.session_state.local_chats_index = load_chats_index()
+
+if "active_chat_id" not in st.session_state:
+    if st.session_state.local_chats_index:
+        st.session_state.active_chat_id = st.session_state.local_chats_index[0]["id"]
+    else:
+        import uuid
+        init_id = f"chat_{uuid.uuid4().hex[:8]}"
+        st.session_state.active_chat_id = init_id
+        st.session_state.local_chats_index = [{
+            "id": init_id,
+            "title": "Welcome Chat",
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")
+        }]
+        save_chats_index(st.session_state.local_chats_index)
+        save_chat_history(init_id, [])
+
+if "local_chat_history" not in st.session_state:
+    st.session_state.local_chat_history = load_chat_history(st.session_state.active_chat_id)
+
 # ─── Apply Theme Class via JS ──────────────────────────────────────────────────
 
 if st.session_state.dark_mode:
@@ -1440,6 +1547,14 @@ components.html(_theme_js, height=0, width=0)
 
 
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
+
+# ─── Pre-Sidebar Stats Setup ───
+try:
+    stats = get_collection_stats()
+    kb_chunks = stats.get("total_chunks", 0)
+except Exception:
+    kb_chunks = 0
+mode = get_mode_info()
 
 with st.sidebar:
     # Brand
@@ -1494,7 +1609,6 @@ with st.sidebar:
         st.rerun()
 
     # ─── Mode Status Display ───
-    mode = get_mode_info()
     is_loc = is_local_active()
     mode_bg = "rgba(34,197,94,0.1)" if is_loc else "rgba(99,102,241,0.1)"
     mode_border = "rgba(34,197,94,0.3)" if is_loc else "rgba(99,102,241,0.3)"
@@ -1525,65 +1639,267 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Agent Config
-    st.markdown('<div class="sidebar-section-title">⚙️ Configuration</div>', unsafe_allow_html=True)
-    max_iterations = st.slider(
-        "Research Depth",
-        min_value=1, max_value=3, value=2,
-        help="Higher = deeper research with more iterations, but slower"
-    )
-
-    st.markdown("---")
-
-    # Agent Pipeline
-    st.markdown('<div class="sidebar-section-title">🤖 Agent Pipeline</div>', unsafe_allow_html=True)
-    
-    agents_info = [
-        ("🔍", "Search Agent", f"Web discovery via {mode['search']}", "av-search"),
-        ("🧠", "Critique Agent", "Gap & bias analysis", "av-critique"),
-        ("📝", "Synthesis Agent", f"Report via {mode['llm']}", "av-synth"),
-        ("💾", "RAG Engine", f"Embeddings: {mode['embeddings']}", "av-rag"),
-    ]
-    for icon, name, role, av_cls in agents_info:
+    if is_local_active():
+        # --- Local Mode Settings ---
+        st.markdown('<div class="sidebar-section-title">⚙️ Local Ollama Settings</div>', unsafe_allow_html=True)
+        
+        # Ollama URL
+        if "ollama_base_url" not in st.session_state:
+            st.session_state.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        ollama_url = st.text_input("Ollama Base URL", value=st.session_state.ollama_base_url, key="ollama_base_url_input")
+        if ollama_url != st.session_state.ollama_base_url:
+            st.session_state.ollama_base_url = ollama_url
+            st.rerun()
+            
+        # Model Dropdown (Dynamic)
+        available_models = get_local_ollama_models(st.session_state.ollama_base_url)
+        if "selected_ollama_model" not in st.session_state:
+            default_model = os.getenv("OLLAMA_MODEL", "llama3.2")
+            if default_model in available_models:
+                st.session_state.selected_ollama_model = default_model
+            elif available_models:
+                st.session_state.selected_ollama_model = available_models[0]
+            else:
+                st.session_state.selected_ollama_model = "llama3.2"
+                
+        # Handle the case where the previously selected model is no longer in available_models
+        selected_model_idx = 0
+        if st.session_state.selected_ollama_model in available_models:
+            selected_model_idx = available_models.index(st.session_state.selected_ollama_model)
+            
+        selected_model = st.selectbox(
+            "Ollama Model",
+            options=available_models,
+            index=selected_model_idx,
+            key="ollama_model_selector"
+        )
+        if selected_model != st.session_state.selected_ollama_model:
+            st.session_state.selected_ollama_model = selected_model
+            st.rerun()
+            
+        # Temperature
+        if "ollama_temperature" not in st.session_state:
+            st.session_state.ollama_temperature = 0.3
+        temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=st.session_state.ollama_temperature, step=0.1, key="ollama_temp_input")
+        if temperature != st.session_state.ollama_temperature:
+            st.session_state.ollama_temperature = temperature
+            
+        # System Prompt
+        if "ollama_system_prompt" not in st.session_state:
+            st.session_state.ollama_system_prompt = "You are a helpful, knowledgeable local AI assistant."
+        system_prompt = st.text_area("System Prompt", value=st.session_state.ollama_system_prompt, height=100, key="ollama_sys_prompt_input")
+        if system_prompt != st.session_state.ollama_system_prompt:
+            st.session_state.ollama_system_prompt = system_prompt
+            
+        st.markdown("---")
+        
+        # --- Local Conversations Index ---
+        st.markdown('<div class="sidebar-section-title">💬 Conversations</div>', unsafe_allow_html=True)
+        
+        # Create Chat Button
+        if st.button("➕ New Chat", use_container_width=True, key="new_chat_btn"):
+            import uuid
+            new_id = f"chat_{uuid.uuid4().hex[:8]}"
+            st.session_state.local_chats_index.insert(0, {
+                "id": new_id,
+                "title": f"New Chat {len(st.session_state.local_chats_index) + 1}",
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")
+            })
+            save_chats_index(st.session_state.local_chats_index)
+            save_chat_history(new_id, [])
+            st.session_state.active_chat_id = new_id
+            st.session_state.local_chat_history = []
+            st.rerun()
+            
+        # List Active/Past Chats
+        for idx, chat in enumerate(st.session_state.local_chats_index):
+            is_active = (chat["id"] == st.session_state.active_chat_id)
+            
+            chat_container = st.container()
+            with chat_container:
+                rename_key = f"rename_active_{chat['id']}"
+                if rename_key not in st.session_state:
+                    st.session_state[rename_key] = False
+                    
+                if st.session_state[rename_key]:
+                    new_title = st.text_input("Rename Title", value=chat["title"], key=f"title_in_{chat['id']}")
+                    r_col1, r_col2 = st.columns(2)
+                    with r_col1:
+                        if st.button("Save", key=f"save_rename_{chat['id']}", use_container_width=True):
+                            chat["title"] = new_title
+                            save_chats_index(st.session_state.local_chats_index)
+                            st.session_state[rename_key] = False
+                            st.rerun()
+                    with r_col2:
+                        if st.button("Cancel", key=f"cancel_rename_{chat['id']}", use_container_width=True):
+                            st.session_state[rename_key] = False
+                            st.rerun()
+                else:
+                    cols = st.columns([5, 1, 1])
+                    with cols[0]:
+                        btn_label = f"💬 {chat['title']}"
+                        if st.button(btn_label, key=f"select_chat_{chat['id']}", use_container_width=True, type="secondary" if not is_active else "primary"):
+                            st.session_state.active_chat_id = chat["id"]
+                            st.session_state.local_chat_history = load_chat_history(chat["id"])
+                            st.rerun()
+                    with cols[1]:
+                        if st.button("✏️", key=f"rename_btn_{chat['id']}", help="Rename chat"):
+                            st.session_state[rename_key] = True
+                            st.rerun()
+                    with cols[2]:
+                        if st.button("🗑️", key=f"delete_btn_{chat['id']}", help="Delete chat"):
+                            delete_chat_history(chat["id"])
+                            st.session_state.local_chats_index.pop(idx)
+                            save_chats_index(st.session_state.local_chats_index)
+                            if is_active:
+                                if st.session_state.local_chats_index:
+                                    st.session_state.active_chat_id = st.session_state.local_chats_index[0]["id"]
+                                    st.session_state.local_chat_history = load_chat_history(st.session_state.active_chat_id)
+                                else:
+                                    import uuid
+                                    init_id = f"chat_{uuid.uuid4().hex[:8]}"
+                                    st.session_state.active_chat_id = init_id
+                                    st.session_state.local_chats_index = [{
+                                        "id": init_id,
+                                        "title": "Welcome Chat",
+                                        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")
+                                    }]
+                                    save_chats_index(st.session_state.local_chats_index)
+                                    save_chat_history(init_id, [])
+                                    st.session_state.local_chat_history = []
+                            st.toast("Chat deleted!", icon="🗑️")
+                            st.rerun()
+        
+        st.markdown("---")
+        
+        # --- Local Knowledge Base Directory ---
+        st.markdown('<div class="sidebar-section-title">📁 Index Local Directory</div>', unsafe_allow_html=True)
+        dir_path = st.text_input("Folder Absolute Path", placeholder="e.g. /Users/username/Documents/data", key="local_dir_path_input")
+        if st.button("🔍 Index Directory", use_container_width=True, key="index_dir_btn"):
+            if not dir_path.strip():
+                st.warning("⚠️ Please provide an absolute directory path.")
+            elif not os.path.exists(dir_path):
+                st.error("❌ Directory does not exist.")
+            else:
+                with st.spinner("Recursively indexing directory files..."):
+                    try:
+                        n_files = index_local_directory(dir_path)
+                        st.success(f"✅ Successfully indexed {n_files} files from local folder!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Directory indexing failed: {e}")
+                        
+        kb_docs = get_kb_documents()
+        if kb_docs:
+            with st.expander(f"📁 Indexed Files ({len(kb_docs)})", expanded=False):
+                for kbd in kb_docs:
+                    st.markdown(f"""
+                    <div style="font-size: 0.76rem; margin-bottom: 4px; padding: 4px; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                        📄 {kbd['name']}<br/>
+                        <span style="color: var(--text-muted); font-size: 0.68rem;">{kbd['pages']} pages · {kbd['chunks']} chunks</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+        st.markdown("---")
+        
+        # --- Document Manager inside Local Mode Sidebar ---
+        st.markdown('<div class="sidebar-section-title">📄 Uploaded Documents</div>', unsafe_allow_html=True)
+        uploaded_files = st.file_uploader(
+            "Upload Documents",
+            type=["pdf", "txt", "md", "docx", "csv"],
+            accept_multiple_files=True,
+            key="local_sidebar_uploader",
+            label_visibility="collapsed"
+        )
+        if uploaded_files:
+            if st.button("📥 Index Uploaded Files", type="primary", use_container_width=True, key="index_uploaded_sidebar_btn"):
+                with st.spinner("Ingesting, parsing and embedding files..."):
+                    success_count = 0
+                    for f in uploaded_files:
+                        file_bytes = f.read()
+                        try:
+                            chunks = ingest_local_file(file_bytes, f.name, doc_type="pdf_upload" if f.name.lower().endswith(".pdf") else "local_document")
+                            if chunks > 0:
+                                success_count += 1
+                        except Exception as e:
+                            st.error(f"Error indexing {f.name}: {e}")
+                    if success_count > 0:
+                        st.success(f"Successfully indexed {success_count} file(s)!")
+                        time.sleep(0.5)
+                        st.rerun()
+                        
+        indexed_docs = get_uploaded_documents()
+        if indexed_docs:
+            with st.expander(f"📄 Uploaded Files ({len(indexed_docs)})", expanded=True):
+                for doc in indexed_docs:
+                    card_cols = st.columns([5, 1, 1])
+                    with card_cols[0]:
+                        warning_html = ""
+                        if doc.get("low_density"):
+                            warning_html = """
+                            <div style="font-size: 0.64rem; color: #f87171; font-weight: 600; margin-top: 2px;">
+                                ⚠️ Scanned/Handwritten (Low Accuracy)
+                            </div>
+                            """
+                        st.markdown(f"""
+                        <div style="font-size: 0.78rem; word-break: break-all;">
+                            📄 {doc['name']}
+                        </div>
+                        <div style="font-size: 0.68rem; color: var(--text-muted);">
+                            🧩 {doc['chunks']} chunks
+                            {warning_html}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with card_cols[1]:
+                        if st.button("✨", key=f"sum_side_{doc['name']}", help="Summarize file"):
+                            st.session_state.summarize_doc_target = doc['name']
+                            st.rerun()
+                    with card_cols[2]:
+                        if st.button("🗑️", key=f"del_side_{doc['name']}", help="Delete file"):
+                            if delete_document(doc['name']):
+                                st.toast(f"Deleted {doc['name']}!", icon="🗑️")
+                                time.sleep(0.5)
+                                st.rerun()
+                                
+        if "summarize_doc_target" in st.session_state and st.session_state.summarize_doc_target:
+            target = st.session_state.summarize_doc_target
+            with st.spinner(f"Generating summary for {target}..."):
+                summary_text = generate_document_summary(target)
+            st.info(f"### ✨ Summary of {target}\n\n{summary_text}")
+            if st.button("Close Summary", key="close_summary_btn"):
+                st.session_state.summarize_doc_target = None
+                st.rerun()
+                
+        st.markdown('<div class="sidebar-section-title" style="margin-top: 15px;">📊 Local KB Info</div>', unsafe_allow_html=True)
+        # Count all unique documents
+        total_docs_count = len(indexed_docs) + len(kb_docs)
         st.markdown(f"""
-        <div class="agent-card">
-            <div class="agent-avatar {av_cls}">{icon}</div>
-            <div class="agent-meta">
-                <div class="agent-name-v2">{name}</div>
-                <div class="agent-role">{role}</div>
+        <div class="stats-widget" style="padding: 12px; margin-bottom: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);">
+            <div style="font-size: 1.4rem; font-weight: 700; color: #4ade80;">{kb_chunks}</div>
+            <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Total Local Chunks</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div class="stats-widget" style="padding: 8px; text-align: center; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);">
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-secondary);">{total_docs_count}</div>
+                <div style="font-size: 0.58rem; color: var(--text-muted);">Total Documents</div>
             </div>
-            <span class="agent-badge badge-ready">Ready</span>
+            <div class="stats-widget" style="padding: 8px; text-align: center; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);">
+                <div style="font-size: 0.9rem; font-weight: 700; color: #10b981;">Online</div>
+                <div style="font-size: 0.58rem; color: var(--text-muted);">Vector DB Status</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # KB Stats
-    st.markdown('<div class="sidebar-section-title">📊 Knowledge Base</div>', unsafe_allow_html=True)
-    try:
-        stats = get_collection_stats()
-        kb_chunks = stats.get("total_chunks", 0)
-    except Exception as e:
-        st.sidebar.error(f"❌ KB Stats Error: {str(e)}")
-        kb_chunks = 0
-
-    st.markdown(f"""
-    <div class="stats-widget">
-        <span class="stats-number">{kb_chunks}</span>
-        <span class="stats-label">Indexed Chunks</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if st.button("🗑️ Clear Knowledge Base", use_container_width=True):
-        try:
-            clear_collection()
-            st.success("✅ Knowledge base cleared!")
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-    st.markdown("---")
-
-    if is_local_active():
+        
+        if st.button("🗑️ Clear Local KB", use_container_width=True, key="clear_local_kb_btn"):
+            try:
+                clear_collection()
+                st.success("✅ Local knowledge base cleared!")
+                time.sleep(0.5)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error clearing: {e}")
+                
         st.markdown("""
         <div class="powered-by">
             Built with<br/>
@@ -1593,7 +1909,60 @@ with st.sidebar:
             <span style="color:#86efac;">ChromaDB</span>
         </div>
         """, unsafe_allow_html=True)
+        
     else:
+        # --- Original Cloud Mode Config & Pipelines ---
+        # Agent Config
+        st.markdown('<div class="sidebar-section-title">⚙️ Configuration</div>', unsafe_allow_html=True)
+        max_iterations = st.slider(
+            "Research Depth",
+            min_value=1, max_value=3, value=2,
+            help="Higher = deeper research with more iterations, but slower"
+        )
+
+        st.markdown("---")
+
+        # Agent Pipeline
+        st.markdown('<div class="sidebar-section-title">🤖 Agent Pipeline</div>', unsafe_allow_html=True)
+        
+        agents_info = [
+            ("🔍", "Search Agent", f"Web discovery via {mode['search']}", "av-search"),
+            ("🧠", "Critique Agent", "Gap & bias analysis", "av-critique"),
+            ("📝", "Synthesis Agent", f"Report via {mode['llm']}", "av-synth"),
+            ("💾", "RAG Engine", f"Embeddings: {mode['embeddings']}", "av-rag"),
+        ]
+        for icon, name, role, av_cls in agents_info:
+            st.markdown(f"""
+            <div class="agent-card">
+                <div class="agent-avatar {av_cls}">{icon}</div>
+                <div class="agent-meta">
+                    <div class="agent-name-v2">{name}</div>
+                    <div class="agent-role">{role}</div>
+                </div>
+                <span class="agent-badge badge-ready">Ready</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # KB Stats
+        st.markdown('<div class="sidebar-section-title">📊 Knowledge Base</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="stats-widget">
+            <span class="stats-number">{kb_chunks}</span>
+            <span class="stats-label">Indexed Chunks</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if st.button("🗑️ Clear Knowledge Base", use_container_width=True):
+            try:
+                clear_collection()
+                st.success("✅ Knowledge base cleared!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+        st.markdown("---")
+
         st.markdown("""
         <div class="powered-by">
             Built with<br/>
@@ -1660,227 +2029,401 @@ st.markdown(f"""
 # ─── Tabs / Dedicated Document Q&A Mode Branching ───────────────────────────
 
 if is_local_active():
-    # Dedicated Local Document Q&A Mode
+    # Dedicated Local Mode Chat & RAG assistant
     st.markdown("""
     <div class="section-head">
-        <div class="section-icon si-rag">📂</div>
-        <div class="section-title-text">Local Document Q&A Console</div>
+        <div class="section-icon si-rag">💬</div>
+        <div class="section-title-text">Local AI Chat + RAG Assistant</div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Upload PDF documents, index them locally in ChromaDB, and query their content with precise citation-aware answers.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Interact with local Ollama LLMs offline. Switch modes below to chat directly or query your document knowledge bases.</div>', unsafe_allow_html=True)
     
-    # Layout columns
-    col_left, col_right = st.columns([1.25, 1.55], gap="large")
-    
-    with col_left:
-        st.markdown("### 📄 Document Manager")
+    # Query document lists first for checking empty states and building modes
+    try:
+        indexed_docs = get_uploaded_documents()
+    except Exception:
+        indexed_docs = []
         
-        # 1. PDF File Uploader
-        uploaded_files = st.file_uploader(
-            "Upload PDF Documents",
-            type=["pdf"],
-            accept_multiple_files=True,
-            label_visibility="collapsed"
-        )
+    try:
+        kb_docs = get_kb_documents()
+    except Exception:
+        kb_docs = []
         
-        if uploaded_files:
-            st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
-            if st.button("📥 Index Uploaded PDFs", type="primary", use_container_width=True):
-                with st.spinner("Processing, parsing and embedding PDFs..."):
-                    success_count = 0
-                    for f in uploaded_files:
-                        file_bytes = f.read()
-                        try:
-                            chunks = ingest_pdf_bytes(file_bytes, f.name)
-                            if chunks > 0:
-                                success_count += 1
-                        except Exception as e:
-                            st.error(f"Error indexing {f.name}: {e}")
-                    
-                    if success_count > 0:
-                        st.success(f"Successfully indexed {success_count} PDF(s) into ChromaDB!")
-                        time.sleep(0.5)
-                        st.rerun()
-                         
-        # 2. Document List Panel
-        st.markdown('<div style="margin-top: 25px;"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="sidebar-section-title">📂 Indexed Documents</div>', unsafe_allow_html=True)
+    # Dynamically toggle Document Chat and Hybrid Chat tabs based on index status
+    chat_modes = ["General Chat"]
+    if indexed_docs:
+        chat_modes.append("Document Chat")
+    if indexed_docs or kb_docs:
+        chat_modes.append("Hybrid Mode")
         
-        try:
-            indexed_docs = get_uploaded_documents()
-        except Exception as e:
-            st.error(f"Failed to query database: {e}")
-            indexed_docs = []
-            
-        if not indexed_docs:
-            st.markdown("""
-            <div class="no-docs-card">
-                No local documents uploaded yet.<br/>Drag & drop PDFs above to start!
+    if "local_chat_mode" not in st.session_state:
+        st.session_state.local_chat_mode = "General Chat"
+    if st.session_state.local_chat_mode not in chat_modes:
+        st.session_state.local_chat_mode = "General Chat"
+        
+    # 1. Chat Mode Selector (Premium Custom Buttons Tabs)
+    st.markdown('<div style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Select Chat Mode:</div>', unsafe_allow_html=True)
+    cols = st.columns(len(chat_modes))
+    for idx, mode_name in enumerate(chat_modes):
+        with cols[idx]:
+            is_active = (st.session_state.local_chat_mode == mode_name)
+            icon = "💬" if mode_name == "General Chat" else ("📂" if mode_name == "Document Chat" else "🧬")
+            btn_label = f"{icon} {mode_name}"
+            if mode_name == "Document Chat":
+                btn_label = f"{icon} {mode_name} ({len(indexed_docs)})"
+            elif mode_name == "Hybrid Mode":
+                btn_label = f"{icon} {mode_name} ({len(indexed_docs) + len(kb_docs)})"
+                
+            if st.button(
+                btn_label, 
+                key=f"btn_local_mode_{mode_name.replace(' ', '_').lower()}", 
+                use_container_width=True, 
+                type="primary" if is_active else "secondary"
+            ):
+                st.session_state.local_chat_mode = mode_name
+                st.rerun()
+
+    # Skip redundant fetches since we already loaded them above
+    pass
+        
+    # Check for empty states based on mode
+    show_chat_interface = True
+    if st.session_state.local_chat_mode == "Document Chat" and not indexed_docs:
+        show_chat_interface = False
+        st.markdown("""
+        <div class="empty-state-card" style="padding: 4rem 2rem !important; text-align: center;">
+            <div style="font-size: 3.5rem; margin-bottom: 1rem;">📭</div>
+            <h4 style="font-family: 'Space Grotesk', sans-serif !important; font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.4rem; margin-top: 0px !important;">
+                No Documents Ingested
+            </h4>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); max-width: 500px; margin: 0 auto; line-height: 1.5;">
+                Please upload and index documents in the Left Sidebar's <strong>Uploaded Documents</strong> section first to enable Document RAG Chat.
             </div>
-            """, unsafe_allow_html=True)
-        else:
-            for doc in indexed_docs:
-                # Custom beautiful glass card for each indexed PDF
-                card_cols = st.columns([5, 1])
-                with card_cols[0]:
-                    st.markdown(f"""
-                    <div class="document-card">
-                        <div style="font-size: 0.84rem; font-weight: 600; color: var(--text-primary); word-break: break-all;">
-                            📄 {doc['name']}
-                        </div>
-                        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">
-                            📄 {doc['pages']} pages · 🧩 {doc['chunks']} chunks
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                with card_cols[1]:
-                    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-                    if st.button("🗑️", key=f"del_{doc['name']}", help=f"Delete {doc['name']}", use_container_width=True):
-                        if delete_document(doc['name']):
-                            st.toast(f"Deleted {doc['name']}!", icon="🗑️")
-                            time.sleep(0.5)
-                            st.rerun()
-                             
-        # 3. ChromaDB Status Panel
-        st.markdown('<div style="margin-top: 25px;"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="sidebar-section-title">⚡ ChromaDB Status</div>', unsafe_allow_html=True)
-        
-        try:
-            stats = get_collection_stats()
-            total_chunks = stats['total_chunks']
-            path_val = stats['path']
-            col_name = stats['collection']
-        except Exception as e:
-            total_chunks = 0
-            path_val = "N/A"
-            col_name = "N/A"
-            
-        st.markdown(f"""
-        <div style="
-            background: rgba(34,197,94,0.04);
-            border: 1px solid rgba(34,197,94,0.15);
-            border-radius: 12px;
-            padding: 12px 14px;
-            font-size: 0.78rem;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        ">
-            🟢 <strong>Status:</strong> Offline Ready<br/>
-            🗄️ <strong>Collection:</strong> {col_name}_local<br/>
-            🧩 <strong>Total chunks:</strong> {total_chunks}
         </div>
         """, unsafe_allow_html=True)
         
-    with col_right:
-        st.markdown("### 💬 Document RAG Q&A Terminal")
-        
-        # Check if there are documents
-        if not indexed_docs:
+    elif st.session_state.local_chat_mode == "Hybrid Mode" and not indexed_docs and not kb_docs:
+        show_chat_interface = False
+        st.markdown("""
+        <div class="empty-state-card" style="padding: 4rem 2rem !important; text-align: center;">
+            <div style="font-size: 3.5rem; margin-bottom: 1rem;">📭</div>
+            <h4 style="font-family: 'Space Grotesk', sans-serif !important; font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.4rem; margin-top: 0px !important;">
+                Knowledge Base is Empty
+            </h4>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); max-width: 500px; margin: 0 auto; line-height: 1.5;">
+                Hybrid mode searches across both uploaded documents and indexed directories. Please upload files or enter a directory path in the Left Sidebar to get started.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if show_chat_interface:
+        if st.session_state.local_chat_mode == "Document Chat":
             st.markdown("""
-            <div class="empty-state-card" style="padding: 4rem 2rem !important;">
-                <div style="font-size: 3.5rem; margin-bottom: 1rem;">📭</div>
-                <h4 style="font-family: 'Space Grotesk', sans-serif !important; font-size: 1.15rem; color: var(--text-secondary); margin-bottom: 0.4rem; margin-top: 0px !important;">
-                    Waiting for Documents
-                </h4>
-                <div style="font-size: 0.85rem; color: var(--text-secondary); max-width: 400px; margin: 0 auto; line-height: 1.5;">
-                    Please upload and index at least one PDF document on the left panel before asking questions.
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 16px; margin: 15px 0 20px 0;">
+                <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                    📂 Select Documents to Chat With
+                </div>
+            """, unsafe_allow_html=True)
+            
+            doc_names = [d["name"] for d in indexed_docs]
+            if "selected_active_docs" not in st.session_state:
+                st.session_state.selected_active_docs = doc_names
+                
+            # Filter selected active docs to only what exists
+            st.session_state.selected_active_docs = [d for d in st.session_state.selected_active_docs if d in doc_names]
+            if not st.session_state.selected_active_docs and doc_names:
+                st.session_state.selected_active_docs = doc_names
+                
+            selected_docs = st.multiselect(
+                "Active Documents",
+                options=doc_names,
+                default=st.session_state.selected_active_docs,
+                key="selected_active_docs_widget",
+                label_visibility="collapsed",
+                help="Only the selected documents will be queried for RAG answers."
+            )
+            st.session_state.selected_active_docs = selected_docs
+            
+            # List available/active knowledge sources in a stylized card layout
+            if indexed_docs:
+                st.markdown('<div style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; margin-top: 10px;">Knowledge Sources Status:</div>', unsafe_allow_html=True)
+                card_html = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">'
+                for doc in indexed_docs:
+                    is_selected = doc['name'] in st.session_state.selected_active_docs
+                    status_icon = "🟢" if is_selected else "⚫"
+                    status_text = "Active" if is_selected else "Inactive"
+                    border_color = "rgba(129, 140, 248, 0.3)" if is_selected else "rgba(255, 255, 255, 0.05)"
+                    bg_color = "rgba(129, 140, 248, 0.05)" if is_selected else "rgba(255, 255, 255, 0.02)"
+                    text_color = "var(--text-secondary)" if is_selected else "var(--text-muted)"
+                    warning_badge = ""
+                    if doc.get("low_density"):
+                        warning_badge = """
+                        <div style="margin-top: 6px; padding: 6px 10px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 6px; color: #f87171; font-size: 0.72rem; font-weight: 500; line-height: 1.3;">
+                            ⚠️ Scanned/Handwritten PDF. Text extraction is extremely poor. RAG accuracy will be degraded.
+                        </div>
+                        """
+                    card_html += f"""
+                    <div style="flex: 1 1 220px; background: {bg_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 12px; font-size: 0.8rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-weight: 600; color: {text_color}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;" title="{doc['name']}">📄 {doc['name']}</span>
+                            <span style="font-size: 0.7rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
+                                {status_icon} {status_text}
+                            </span>
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 0.72rem; display: flex; gap: 10px;">
+                            <span>📖 {doc['pages']} pages</span>
+                            <span>🧩 {doc['chunks']} chunks</span>
+                        </div>
+                        {warning_badge}
+                    </div>
+                    """
+                card_html += '</div>'
+                st.markdown(card_html, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+                <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 8px;">
+                    Total: <strong>{len(indexed_docs)}</strong> ingested documents · Chunks: <strong>{sum(d['chunks'] for d in indexed_docs)}</strong> · Vector DB: <strong>Connected (Offline)</strong>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-        else:
-            # RAG Q&A Interface
-            q_input = st.text_input(
-                "Question Box",
-                placeholder="e.g. 'Summarize the key growth factors' or 'What are the main risks mentioned?'",
-                label_visibility="collapsed"
-            )
-            
-            col_ask1, col_ask2, _ = st.columns([1.8, 1.2, 3])
-            with col_ask1:
-                ask_qa = st.button("💬 Ask Document", type="primary", use_container_width=True)
-            with col_ask2:
-                qa_k = st.selectbox("Top Chunks", [3, 5, 8, 10], index=1, label_visibility="collapsed")
-                 
-            if ask_qa:
-                if not q_input.strip():
-                    st.warning("⚠️ Please enter a question.")
-                else:
-                    with st.spinner("Searching local ChromaDB & generating answer..."):
-                        try:
-                            res = document_qa_query(q_input, k=qa_k)
-                            ans = res.get("answer", "")
-                            if isinstance(ans, list):
-                                ans = '\n'.join(
-                                    b.get('text', '') if isinstance(b, dict) else str(b) for b in ans
-                                )
-                            st.session_state.pdf_qa_history.insert(0, {
-                                "question": q_input,
-                                "answer": str(ans),
-                                "sources": res.get("sources", [])
-                            })
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Document Q&A Query failed: {e}")
-                             
-            # Display Q&A History
-            if st.session_state.pdf_qa_history:
-                st.markdown("---")
-                st.markdown('<div class="section-title-text" style="font-size: 1.35rem; margin-bottom: 1.25rem;">💬 Q&A History</div>', unsafe_allow_html=True)
-                
-                for idx, item in enumerate(st.session_state.pdf_qa_history):
-                    # User Bubble
+
+        # Display Message History
+        if st.session_state.local_chat_history:
+            for item in st.session_state.local_chat_history:
+                if item["role"] == "user":
                     st.markdown(f"""
                     <div class="chat-message user">
                         <div class="chat-avatar-wrap">👤</div>
                         <div class="chat-content">
                             <div class="chat-content-header">User</div>
-                            <div style="font-weight: 500;">{item['question']}</div>
+                            <div style="font-weight: 500;">{item['content']}</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                    
-                    # Assistant Bubble
+                else:
                     st.markdown(f"""
                     <div class="chat-message assistant">
                         <div class="chat-avatar-wrap">🤖</div>
                         <div class="chat-content">
-                            <div class="chat-content-header">AI Local Document Assistant</div>
+                            <div class="chat-content-header">AI Assistant ({item.get('mode', 'General')})</div>
                     """, unsafe_allow_html=True)
                     
-                    st.markdown(item["answer"])
+                    # Collapsible thinking process box
+                    if item.get("thinking"):
+                        with st.expander("💭 View Thinking Process", expanded=False):
+                            st.markdown(item["thinking"])
+                            
+                    st.markdown(item["content"])
                     
+                    if item.get("confidence"):
+                        st.markdown(f"**Confidence Rating:** `{item['confidence']}`")
+                        
                     st.markdown("""
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # Sources/Citations inside expander
-                    if item["sources"]:
-                        # Render citations dynamically
-                        with st.expander(f"📎 View {len(item['sources'])} citations for this answer", expanded=False):
+                    # Collapsible RAG Pipeline Debugger
+                    if item.get("debug"):
+                        debug_data = item["debug"]
+                        with st.expander("⚙️ RAG Pipeline Debugger", expanded=False):
+                            st.markdown(f"""
+                            **Retrieval Info:**
+                            - **Collection Name:** `{debug_data.get('collection', 'Unknown')}`
+                            - **Document IDs Searched:** `{debug_data.get('doc_names', 'All')}`
+                            - **Top-K Chunks (k):** `{debug_data.get('k', 5)}`
+                            - **Retrieved Chunk Count:** `{debug_data.get('chunks_count', 0)}`
+                            - **Similarity Scores:** `{debug_data.get('scores', [])}`
+                            - **Pages Retrieved:** `{debug_data.get('pages', [])}`
+
+                            **Context Info:**
+                            - **Final Chunks Selected:** `{debug_data.get('chunks_count', 0)}`
+                            - **Context Length (chars):** `{debug_data.get('context_length', 0)}`
+                            - **Context Token Count (approx):** `{debug_data.get('token_count', 0)}`
+
+                            **Ollama Info:**
+                            - **Model Name:** `{debug_data.get('model_name', 'Unknown')}`
+                            - **Prompt Size (chars):** `{debug_data.get('prompt_size', 0)}`
+                            - **Context Attached:** `{debug_data.get('context_attached', 'No')}`
+
+                            **Output Info:**
+                            - **Confidence Score:** `{debug_data.get('confidence_score', item.get('confidence', 'N/A'))}`
+                            - **Citation Count:** `{debug_data.get('citation_count', 0)}`
+                            - **Source Pages:** `{debug_data.get('source_pages', [])}`
+                            """)
+                    
+                    # Display citations
+                    if item.get("sources"):
+                        with st.expander(f"📎 View {len(item['sources'])} References & Citations", expanded=False):
                             for s_idx, src in enumerate(item["sources"]):
-                                c_cls = f"c{(s_idx % 5) + 1}"
+                                color_cls = f"c{(s_idx % 5) + 1}"
                                 st.markdown(f"""
-                                <div class="cite-card {c_cls}">
+                                <div class="cite-card {color_cls}">
                                     <div class="cite-head">
                                         <span class="cite-idx">[{src['index']}]</span>
-                                        <span class="cite-score">Relevance: {src['score']}</span>
+                                        <span class="cite-score">Score: {src['score']}</span>
                                     </div>
-                                    <div class="cite-title">📄 {src['source']} · Page {src['page']}</div>
-                                    <div style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 6px; font-style: italic; background: rgba(255,255,255,0.01); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
-                                        "{src['snippet']}"
+                                    <div class="cite-title">📄 {src.get('title') or src['source']}</div>
+                                    <div class="cite-url">🔗 {src['source']} · Page {src.get('page', 1)}</div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted); font-style:italic; margin-top:4px;">
+                                        "{src.get('snippet', '')}"
                                     </div>
                                 </div>
                                 """, unsafe_allow_html=True)
-                    st.markdown('<div style="height: 12px;"></div>', unsafe_allow_html=True)
-            else:
-                st.markdown("""
-                <div class="empty-state-card" style="padding: 3rem 2rem !important; margin-top: 1.5rem !important;">
-                    <span style="font-size: 2.2rem; display: block; margin-bottom: 0.5rem; opacity: 0.7;">💬</span>
-                    <div style="font-size: 0.94rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Console Ready</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Ask a question about the uploaded PDFs above and witness citation-backed local synthesis.</div>
-                </div>
-                """, unsafe_allow_html=True)
+            st.markdown('<div style="height: 20px;"></div>', unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="empty-state-card" style="padding: 3rem 2rem !important; text-align: center; margin-top: 1rem;">
+                <span style="font-size: 2.2rem; display: block; margin-bottom: 0.5rem; opacity: 0.7;">💬</span>
+                <div style="font-size: 0.94rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Conversation Started</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary);">Ask any questions and Ollama will synthesize natural, structured response text.</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Streaming generator block (if last message is User prompt)
+        if st.session_state.local_chat_history and st.session_state.local_chat_history[-1]["role"] == "user":
+            last_msg = st.session_state.local_chat_history[-1]
+            prompt_val = last_msg["content"]
+            mode_val = last_msg["mode"]
+            
+            # Show assistant placeholder bubble
+            st.markdown(f"""
+            <div class="chat-message assistant">
+                <div class="chat-avatar-wrap">🤖</div>
+                <div class="chat-content">
+                    <div class="chat-content-header">AI Assistant ({mode_val})</div>
+            """, unsafe_allow_html=True)
+            
+            # Setup dynamic empty containers
+            think_placeholder = st.empty()
+            response_placeholder = st.empty()
+            
+            st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            # Compile conversation context/history
+            history_context = []
+            for turn in st.session_state.local_chat_history[:-1]:
+                history_context.append({
+                    "role": turn["role"],
+                    "content": turn["content"]
+                })
+                
+            system_prompt = st.session_state.get("ollama_system_prompt", "You are a helpful, knowledgeable local AI assistant.")
+            
+            if mode_val == "General Chat":
+                stream_gen = general_chat_stream(
+                    question=prompt_val,
+                    history=history_context,
+                    system_prompt=system_prompt
+                )
+            elif mode_val == "Document Chat":
+                # Get the filtered document names selected by the user
+                active_filter_docs = st.session_state.get("selected_active_docs", [])
+                if not active_filter_docs:
+                    active_filter_docs = [d["name"] for d in get_uploaded_documents()]
+                    
+                stream_gen = document_qa_stream(
+                    question=prompt_val,
+                    k=5,
+                    history=history_context,
+                    doc_types=["pdf_upload", "local_document"],
+                    doc_names=active_filter_docs,
+                    system_prompt=None  # Use strict document Q&A prompt
+                )
+            else:  # Hybrid Mode
+                hybrid_prompt = """You are a helpful and intelligent local AI assistant. 
+You answer queries by combining the provided document Context with your general knowledge and reasoning capabilities.
+
+STRICT CITATION RULES:
+1. If you use information from the provided Context, you MUST cite it using [number] notation.
+2. Clearly distinguish between facts sourced from the documents and assertions coming from your general training.
+3. If the context is irrelevant or empty, answer using your general knowledge but mention that no relevant context was found in the uploaded documents."""
+                
+                stream_gen = document_qa_stream(
+                    question=prompt_val,
+                    k=5,
+                    history=history_context,
+                    doc_types=["pdf_upload", "local_document", "local_kb_file"],
+                    doc_names=None,  # Search all files in hybrid mode
+                    system_prompt=hybrid_prompt
+                )
+                
+            # Perform streaming read loop
+            full_text = ""
+            thinking_text = ""
+            response_text = ""
+            sources = []
+            confidence = ""
+            debug_info = None
+            
+            for chunk_type, val in stream_gen:
+                if chunk_type == "token":
+                    full_text += val
+                    
+                    if "<think>" in full_text:
+                        parts = full_text.split("<think>", 1)
+                        pre_think = parts[0]
+                        post_think = parts[1]
+                        
+                        if "</think>" in post_think:
+                            inner_parts = post_think.split("</think>", 1)
+                            thinking_text = inner_parts[0]
+                            response_text = pre_think + inner_parts[1]
+                        else:
+                            thinking_text = post_think
+                            response_text = pre_think
+                    else:
+                        response_text = full_text
+                        
+                    # Real-time updates
+                    if thinking_text:
+                        think_placeholder.markdown(f"""
+                        <div class="thinking-expander" style="
+                            background: rgba(255,255,255,0.02);
+                            border-left: 3px solid #818cf8;
+                            padding: 10px 15px;
+                            margin-bottom: 12px;
+                            border-radius: 4px;
+                            font-size: 0.82rem;
+                            color: var(--text-muted);
+                            font-style: italic;
+                        ">
+                            <strong>💭 Thinking Process:</strong><br/>
+                            {thinking_text.replace('\n', '<br/>')}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    if response_text:
+                        response_placeholder.markdown(response_text)
+                        
+                elif chunk_type == "metadata":
+                    sources = val.get("sources", [])
+                    confidence = val.get("confidence", "")
+                    debug_info = val.get("debug")
+                    
+            # Complete the turn and persist
+            st.session_state.local_chat_history.append({
+                "role": "assistant",
+                "content": response_text,
+                "mode": mode_val,
+                "thinking": thinking_text,
+                "sources": sources,
+                "confidence": confidence,
+                "debug": debug_info
+            })
+            save_chat_history(st.session_state.active_chat_id, st.session_state.local_chat_history)
+            st.rerun()
+
+        # Chat input container
+        user_prompt = st.chat_input("Message local AI assistant...")
+        if user_prompt:
+            st.session_state.local_chat_history.append({
+                "role": "user",
+                "content": user_prompt,
+                "mode": st.session_state.local_chat_mode
+            })
+            save_chat_history(st.session_state.active_chat_id, st.session_state.local_chat_history)
+            st.rerun()
 
 else:
     # Cloud Mode (Original Tabs)

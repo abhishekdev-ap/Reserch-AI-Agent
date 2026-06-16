@@ -62,23 +62,73 @@ _embeddings_cache = {}
 
 # ─── LLM Provider ────────────────────────────────────────────────────────────
 
+def get_local_ollama_models(base_url: str = None) -> list:
+    """Fetch the list of installed Ollama models from the local server."""
+    import httpx
+    if not base_url:
+        try:
+            import streamlit as st
+            if hasattr(st, "session_state") and "ollama_base_url" in st.session_state:
+                base_url = st.session_state.ollama_base_url
+        except Exception:
+            pass
+    if not base_url:
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        
+    try:
+        response = httpx.get(f"{base_url}/api/tags", timeout=1.5)
+        if response.status_code == 200:
+            data = response.json()
+            models = [m["name"] for m in data.get("models", [])]
+            if models:
+                return sorted(models)
+    except Exception:
+        pass
+    # Default fallback list if Ollama is unreachable/offline
+    return ["llama3.2:latest", "llama3.2", "mistral", "gemma2", "qwen2.5", "deepseek-r1:1.5b", "deepseek-r1:8b"]
+
+
 def get_llm(temperature: float = 0.1):
     """Return the appropriate LLM based on dynamic LLM_MODE with caching."""
     global _llm_cache
     mode = get_current_mode()
-    cache_key = (mode, temperature)
-    if cache_key not in _llm_cache:
-        if mode == "local":
+    
+    selected_model = None
+    if mode == "local":
+        try:
+            import streamlit as st
+            if hasattr(st, "session_state") and "selected_ollama_model" in st.session_state:
+                selected_model = st.session_state.selected_ollama_model
+        except Exception:
+            pass
+        if not selected_model:
+            selected_model = os.getenv("OLLAMA_MODEL", "llama3.2")
+            
+        cache_key = (mode, temperature, selected_model)
+        if cache_key not in _llm_cache:
             from langchain_ollama import ChatOllama
+            base_url = None
+            try:
+                import streamlit as st
+                if hasattr(st, "session_state") and "ollama_base_url" in st.session_state:
+                    base_url = st.session_state.ollama_base_url
+            except Exception:
+                pass
+            if not base_url:
+                base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+                
             _llm_cache[cache_key] = ChatOllama(
-                model=os.getenv("OLLAMA_MODEL", "llama3.2"),
-                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                model=selected_model,
+                base_url=base_url,
                 temperature=temperature,
             )
-        else:
+    else:
+        selected_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        cache_key = (mode, temperature, selected_model)
+        if cache_key not in _llm_cache:
             from langchain_google_genai import ChatGoogleGenerativeAI
             _llm_cache[cache_key] = ChatGoogleGenerativeAI(
-                model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+                model=selected_model,
                 google_api_key=os.getenv("GEMINI_API_KEY"),
                 temperature=temperature,
             )
