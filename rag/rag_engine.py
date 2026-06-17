@@ -326,8 +326,9 @@ def _parse_pdf_to_docs(file_bytes: bytes, filename: str, doc_type: str) -> List[
             if not cleaned_text or len(cleaned_text) < 40:
                 logger.info(f"Page {i+1} extracted text is empty or very short ({len(cleaned_text)} chars). Running OCR fallback for page {i+1}...")
                 try:
-                    import pdf2image
-                    import pytesseract
+                    import importlib
+                    pdf2image = importlib.import_module("pdf2image")
+                    pytesseract = importlib.import_module("pytesseract")
                     # Convert only this specific page to image
                     images = pdf2image.convert_from_bytes(file_bytes, first_page=i+1, last_page=i+1)
                     if images:
