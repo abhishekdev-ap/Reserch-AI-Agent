@@ -71,18 +71,20 @@ The application is structured into two highly optimized workflows depending on y
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Technology Stack & Rationale
 
-| Component | Cloud Mode (Research) | Local Mode (Document Q&A) |
-|---|---|---|
-| **Core LLM** | Google Gemini API (`gemini-1.5-flash`) | Ollama (`llama3.2` running locally) |
-| **Web Search** | Tavily Search API (Hybrid News & Gen) | None (100% Offline Document Scoped) |
-| **Embeddings** | Google Generative AI Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (Local CPU) |
-| **Vector DB** | ChromaDB (`chroma_db/cloud`) | ChromaDB (`chroma_db/local` isolated folder) |
-| **Orchestration** | LangGraph & LangChain | LangChain & PyPDF Parser |
-| **OCR Fallback** | None | Poppler (`pdf2image`) & Tesseract (`pytesseract`) |
-| **Backend** | FastAPI & Uvicorn | FastAPI & Uvicorn |
-| **Frontend** | Streamlit (Figma-Inspired Dark/Light Modes) | Streamlit (Figma-Inspired Dark/Light Modes) |
+We selected a hybrid, high-efficiency stack designed to optimize performance, minimize latency, and ensure strict privacy configurations when running offline:
+
+| Component | Cloud Mode (Research) | Local Mode (Document Q&A) | Rationale & Selection Criteria |
+|---|---|---|---|
+| **Core LLM** | Google Gemini API (`gemini-1.5-flash`) | Ollama (`llama3.2` running locally) | **Cloud**: Gemini provides state-of-the-art multi-modal capabilities, rapid speed, and structured output parsing.<br>**Local**: Ollama runs models locally on commodity hardware, ensuring zero external data leakage. |
+| **Web Search** | Tavily Search API (Hybrid News & Gen) | None (100% Offline Document Scoped) | **Cloud**: Tavily is built specifically for AI agents, returning pre-filtered, structured web content instead of raw HTML.<br>**Local**: Strict offline design halts all outbound network calls for high-security environments. |
+| **Embeddings** | Google Generative AI Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (Local CPU) | **Cloud**: High-dimensionality vector embeddings matched directly to Gemini's vocabulary.<br>**Local**: Lightweight, CPU-friendly semantic encoder requiring no GPU. |
+| **Vector DB** | ChromaDB (`chroma_db/cloud`) | ChromaDB (`chroma_db/local` isolated folder) | **Both**: ChromaDB is a lightweight, developer-friendly vector database. We use isolated directory paths to ensure data separation. |
+| **Orchestration** | LangGraph & LangChain | LangChain & PyPDF Parser | **Cloud**: LangGraph manages the stateful agent loops, fact-checking, and critiquing graphs.<br>**Local**: LangChain standardizes chains and prompts. |
+| **OCR Fallback** | None | Poppler (`pdf2image`) & Tesseract (`pytesseract`) | **Local**: Automatically triggers high-fidelity OCR if standard PDF extraction fails, ensuring readability of legacy documents. |
+| **Backend** | FastAPI & Uvicorn | FastAPI & Uvicorn | **Both**: Async web framework that serves fast JSON APIs and auto-generates interactive OpenAPI documentation. |
+| **Frontend** | Streamlit (Ultra-Premium Dark/Light UI) | Streamlit (Ultra-Premium Dark/Light UI) | **Both**: Rapid frontend application creation with native reactivity, coupled with custom glassmorphism styling. |
 
 ---
 
@@ -105,7 +107,7 @@ The application is structured into two highly optimized workflows depending on y
 
 1. **Clone the Repository**:
    ```bash
-   git clone <your-repository-url>
+   git clone https://github.com/abhishekdev-ap/Reserch-AI-Agent.git
    cd "Multi Agent research agent"
    ```
 
